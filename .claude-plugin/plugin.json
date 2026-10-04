@@ -1,0 +1,1 @@
+{ "name": "token-meter", "version": "0.1.0", "description": "Pixel Clawd usage band above the prompt, plus a live token count while a turn runs", "types": "./types/index.d.ts" }
