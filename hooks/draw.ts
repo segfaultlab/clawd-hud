@@ -16,7 +16,7 @@ const dur = (ms: number) => {
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${s % 60}s` : span(ms)
 }
 
-const usd = (n: number) => (n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`)
+const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`)
 
 const LIMIT_NAMES: Record<string, string> = {
   five_hour: '5h',
@@ -26,7 +26,7 @@ const LIMIT_NAMES: Record<string, string> = {
 
 export const limitName = (l: Limit) => LIMIT_NAMES[l.kind] ?? l.kind
 
-export type Drawing = { source: string; width: number; height: number }
+export type Drawing = { source: string; width: number; height: number; alt: string }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -41,7 +41,7 @@ svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#d6d5ce;--track:rgba(11,
 font-family:ui-monospace,"SF Mono",Menlo,monospace}
 @media (prefers-color-scheme:dark){svg{--ink:#fff;--ink2:#c3c2b7;--grid:#383835;--track:rgba(255,255,255,.10);
 --s1:#3987e5;--s4:#c98500;--warn:#fab219;--goodt:#0ca30c;--warnt:#fab219}}
-text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}
+text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}.v{font-size:13px;font-weight:700}
 .good{fill:var(--goodt)}.warn{fill:var(--warnt)}.crit{fill:var(--crit)}
 .pop{opacity:0;animation:pop 1ms linear forwards}@keyframes pop{to{opacity:1}}
 .bc{animation:bc 1s steps(1) infinite}@keyframes bc{50%{opacity:.2}}
@@ -50,10 +50,10 @@ text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}
 .legA{animation:legA .32s steps(1) infinite}@keyframes legA{50%{opacity:0}}
 .legB{animation:legB .32s steps(1) infinite}@keyframes legB{0%{opacity:0}50%{opacity:1}}
 .blink{opacity:0;animation:blink 4s steps(1) infinite}@keyframes blink{0%{opacity:0}92%{opacity:1}96%{opacity:0}}
-.sweat{animation:sweat 1s steps(4) infinite}@keyframes sweat{to{transform:translateY(calc(var(--u) * 4));opacity:0}}
+.sweat{animation:sweat 1.6s steps(4) infinite}@keyframes sweat{0%,25%{transform:none;opacity:1}100%{transform:translateY(calc(var(--u) * 3));opacity:0}}
 .kickA{animation:legA .6s steps(1) infinite}.kickB{animation:legB .6s steps(1) infinite}
 .zz{opacity:0;animation:zz 2.4s steps(6) infinite}@keyframes zz{0%{opacity:0;transform:none}15%{opacity:1}100%{opacity:0;transform:translate(calc(var(--u) * 3),calc(var(--u) * -4))}}
-.jump{animation:jump .5s steps(3) 3}@keyframes jump{50%{transform:translateY(calc(var(--u) * -3))}}
+.jump{animation:jump .5s steps(3) 3,bob 1.2s steps(1) 1.5s infinite}@keyframes jump{50%{transform:translateY(calc(var(--u) * -3))}}
 .spark{transform-box:fill-box;transform-origin:center;opacity:0;animation:spark .8s steps(4) 2}
 @keyframes spark{0%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.4)}}
 .shake{animation:shake .2s steps(1) infinite}@keyframes shake{50%{transform:translateX(calc(var(--u) * .5))}}
@@ -70,6 +70,15 @@ text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}
 .fall{transform-box:fill-box;transform-origin:bottom;animation:fall 1.4s steps(4) 1}
 @keyframes fall{0%{transform:none}15%,65%{transform:scaleY(.55)}100%{transform:none}}
 .bang{opacity:0;animation:bang 1.6s steps(1) 1}@keyframes bang{0%,70%{opacity:1}100%{opacity:0}}
+.penx{animation:penx 2s steps(4) infinite}@keyframes penx{0%{transform:none}80%,100%{transform:translateX(calc(var(--u) * 4))}}
+.ink{transform-box:fill-box;transform-origin:left;animation:ink 2s steps(4) infinite}@keyframes ink{0%{transform:scaleX(0)}80%,100%{transform:scaleX(1)}}
+.scrib{animation:bob .16s steps(1) infinite}
+.flip{transform-box:fill-box;transform-origin:calc(var(--u) * -.5) 0;opacity:0;animation:flip 3s steps(1) infinite}
+@keyframes flip{0%,70%{opacity:0;transform:none}72%{opacity:1;transform:none}80%{opacity:1;transform:scaleX(.4)}88%{opacity:1;transform:scaleX(-.4)}96%{opacity:1;transform:scaleX(-1)}100%{opacity:0;transform:scaleX(-1)}}
+.wave{animation:wave .4s steps(1) infinite}@keyframes wave{50%{transform:translateX(var(--u))}}
+.dot{opacity:.25;animation:dot 1.2s steps(1) infinite}@keyframes dot{0%,40%{opacity:1}41%,100%{opacity:.25}}
+.squash{transform-box:fill-box;transform-origin:bottom;animation:breathe .6s steps(2) infinite}
+.crush{transform-box:fill-box;transform-origin:center;animation:crush 1.5s steps(3) infinite}@keyframes crush{to{transform:scale(.3)}}
 .breathe{transform-box:fill-box;transform-origin:bottom;animation:breathe 2.4s steps(2) infinite}@keyframes breathe{50%{transform:scaleY(.88)}}
 </style>`
 
@@ -98,6 +107,7 @@ const glyphCells = (rows: string[]) => {
 const Z = glyphCells(['111', '001', '010', '100', '111'])
 const Q = glyphCells(['111', '001', '011', '000', '010'])
 const BANG = glyphCells(['1', '1', '1', '0', '1'])
+const DROP = glyphCells(['00100', '00100', '01110', '11111', '11111', '11111', '01110'])
 
 const zzz = (u: number) =>
   [0, 0.8, 1.6]
@@ -106,11 +116,26 @@ const zzz = (u: number) =>
 
 const extras = (mode: Pose['mode'], u: number) => {
   if (mode === 'thinking') {
-    return `<path class="q" d="${cellsPath(Q, 15 * u, -5 * u, u * 0.8, u * 0.8)}" fill="var(--ink2)"/>`
+    return `<path class="q" d="${cellsPath(Q, 15 * u, -4 * u, u * 0.8, u * 0.8)}" fill="var(--ink2)"/>`
   }
   if (mode === 'tool') {
     return `<g class="hamA"><rect x="${17 * u}" y="${-2 * u}" width="${u}" height="${6 * u}" fill="#8a5a3c"/><rect x="${16 * u}" y="${-4 * u}" width="${3 * u}" height="${2 * u}" fill="var(--muted)"/></g>
 <g class="hamB"><rect x="${17 * u}" y="${3 * u}" width="${5 * u}" height="${u}" fill="#8a5a3c"/><rect x="${21 * u}" y="${u}" width="${2 * u}" height="${4 * u}" fill="var(--muted)"/><rect x="${24 * u}" y="0" width="${u}" height="${u}" fill="var(--s4)"/><rect x="${24 * u}" y="${5 * u}" width="${u}" height="${u}" fill="var(--s4)"/></g>`
+  }
+  if (mode === 'writing') {
+    return `<rect x="${18 * u}" y="${6 * u}" width="${6 * u}" height="${4 * u}" fill="var(--grid)"/><rect class="ink" x="${19 * u}" y="${8 * u}" width="${4 * u}" height="${u}" fill="var(--ink2)"/>
+<g class="penx"><g class="scrib"><rect x="${19 * u}" y="${8 * u}" width="${u}" height="${u}" fill="var(--ink2)"/><path d="${cellsPath([[20, 7], [21, 6]], 0, 0, u, u)}" fill="var(--s4)"/><rect x="${22 * u}" y="${5 * u}" width="${u}" height="${u}" fill="var(--crit)"/></g></g>`
+  }
+  if (mode === 'reading') {
+    const lines = [18.5, 22.5].flatMap(px => [4, 6].map(py => `<rect x="${px * u}" y="${py * u}" width="${2 * u}" height="${u / 2}" fill="var(--muted)"/>`)).join('')
+    return `<rect x="${17 * u}" y="${4 * u}" width="${9 * u}" height="${5 * u}" fill="var(--s1)"/><rect x="${18 * u}" y="${3 * u}" width="${3 * u}" height="${5 * u}" fill="#f4f1e8"/><rect x="${22 * u}" y="${3 * u}" width="${3 * u}" height="${5 * u}" fill="#f4f1e8"/>${lines}<rect class="flip" x="${22 * u}" y="${3 * u}" width="${3 * u}" height="${5 * u}" fill="#e2ddcf"/>`
+  }
+  if (mode === 'waiting') {
+    const dots = [20, 22, 24].map((dx, i) => `<rect class="dot" style="animation-delay:${i * 0.4}s" x="${dx * u}" y="${-3 * u}" width="${u}" height="${u}" fill="var(--ink2)"/>`).join('')
+    return `<rect x="${17 * u}" y="${-u}" width="${u}" height="${7 * u}"/><g class="wave"><rect x="${16 * u}" y="${-2 * u}" width="${u}" height="${u}"/><rect x="${18 * u}" y="${-2 * u}" width="${u}" height="${u}"/></g>${dots}`
+  }
+  if (mode === 'compacting') {
+    return `<g class="crush"><rect x="${18 * u}" y="${3 * u}" width="${6 * u}" height="${6 * u}" fill="#f4f1e8"/>${[4, 6].map(py => `<rect x="${19 * u}" y="${py * u}" width="${4 * u}" height="${u / 2}" fill="var(--muted)"/>`).join('')}</g>`
   }
   if (mode === 'responding') {
     return [0, 0.4, 0.8]
@@ -142,10 +167,10 @@ const clawd = (x: number, y: number, u: number, p: Pose) => {
     const eyes = P(EYES, eyesShut ? '' : 'blink')
     const cls = p.celebrate
       ? 'jump'
-      : ({ tool: 'walk', responding: 'walk', thinking: 'think', error: 'sway', aborted: 'fall', sleep: 'breathe', idle: 'bob' } as const)[p.mode]
+      : ({ tool: 'walk', writing: 'think', reading: 'think', delegating: 'bob', waiting: 'bob', compacting: 'squash', responding: 'walk', thinking: 'think', error: 'sway', aborted: 'fall', sleep: 'breathe', idle: 'bob' } as const)[p.mode]
     body = `<g class="${cls}">${P(BODY)}${eyes}${legs}</g>${extras(p.mode, u)}`
     if (p.level >= 80 && p.mode !== 'sleep') {
-      body += `<rect class="sweat" x="${17 * u}" y="${-h * 0.5}" width="${u}" height="${h}" fill="var(--s1)"/>`
+      body += `<g class="sweat"><path d="${cellsPath(DROP, -u, -2 * u, u / 2, u / 2)}" fill="var(--s1)"/><rect x="${-u / 2}" y="${-u / 2}" width="${u / 2}" height="${u / 2}" fill="#fff"/></g>`
     }
     if (p.celebrate) {
       const spots: [number, number][] = [[-2, -1], [19, -1], [-1, 4], [18, 4]]
@@ -158,36 +183,21 @@ const clawd = (x: number, y: number, u: number, p: Pose) => {
   return `<g transform="translate(${x} ${y})" style="--u:${u}px" fill="${CLAWD}">${body}</g>`
 }
 
-const GLYPHS: Record<string, string[]> = {
-  '0': ['111', '101', '101', '101', '111'],
-  '1': ['010', '110', '010', '010', '111'],
-  '2': ['111', '001', '111', '100', '111'],
-  '3': ['111', '001', '111', '001', '111'],
-  '4': ['101', '101', '111', '001', '001'],
-  '5': ['111', '100', '111', '001', '111'],
-  '6': ['111', '100', '111', '101', '111'],
-  '7': ['111', '001', '001', '001', '001'],
-  '8': ['111', '101', '111', '101', '111'],
-  '9': ['111', '101', '111', '001', '111'],
-  '%': ['101', '001', '010', '100', '101'],
+const helper = (x: number, y: number, u: number) => {
+  const P = (cells: [number, number][], cls: string) => `<path class="${cls}" d="${cellsPath(cells, 0, 0, u, u * 2)}"/>`
+  return `<g transform="translate(${x} ${y})" style="--u:${u}px" fill="${CLAWD}"><g class="walk"><path d="${cellsPath(BODY, 0, 0, u, u * 2)}"/>${P(EYES, 'blink')}${P(LEGS_A, 'legA')}${P(LEGS_B, 'legB')}</g></g>`
 }
 
-const pixelText = (s: string, x: number, y: number, u: number, fill: string) => {
-  const cells: [number, number][] = []
-  let cx = 0
-  for (const ch of s) {
-    const g = GLYPHS[ch] ?? ['0', '0', '0', '0', '0']
-    g.forEach((row, ry) => [...row].forEach((bit, rx) => bit === '1' && cells.push([cx + rx, ry])))
-    cx += g[0]!.length + 1
-  }
-  return { svg: `<path d="${cellsPath(cells, x, y, u, u)}" fill="${fill}"/>`, width: (cx - 1) * u }
-}
+const terminal = (x: number, y: number) =>
+  `<rect x="${x}" y="${y}" width="14" height="8" fill="var(--muted)"/><rect x="${x + 1}" y="${y + 1}" width="12" height="6" fill="#1d1d1b"/><path d="M${x + 2} ${y + 2}h1v1h1v1h-1v1h-1z" fill="#0ca30c"/><rect class="bc" x="${x + 5}" y="${y + 4}" width="3" height="1" fill="#0ca30c"/>`
 
-const statusFill = (p: number) => (p >= 90 ? 'var(--crit)' : p >= 75 ? 'var(--warn)' : 'var(--good)')
+export const level = (p: number) => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'good')
+
+export const filledCells = (p: number, n: number) => (p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0)
 
 const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: number, p: number, delay = 0) => {
-  const filled = p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0
-  const fill = statusFill(p)
+  const filled = filledCells(p, n)
+  const fill = `var(--${level(p)})`
   const out: string[] = []
   for (let i = 0; i < n; i++) {
     const rx = x + i * (cw + gap)
@@ -205,30 +215,23 @@ const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: nu
 
 type Gauge = { name: string; p: number }
 
-const gauges = (m: Meter): Gauge[] => {
+export const gauges = (m: Meter): Gauge[] => {
   const list: Gauge[] = []
   if (m.context?.percent !== undefined) list.push({ name: 'ctx', p: m.context.percent })
   for (const l of m.rateLimits.slice(0, 2)) list.push({ name: limitName(l), p: l.percentUsed })
   return list
 }
 
-export type Burn = { lead: string; verdict: string; tone: 'good' | 'warn' | 'crit' | 'mu' }
+type Pace = { l: Limit; reset: number; perHour?: number; exhaust?: number }
 
-const burn = (m: Meter, kind: string, now: number): Burn => {
+const pace = (m: Meter, kind: string, now: number): Pace | null => {
   const l = m.rateLimits.find(x => x.kind === kind)
-  if (!l) return { lead: '', verdict: '', tone: 'mu' }
-  const name = limitName(l)
+  if (!l) return null
   const b = m.base[kind]
   const reset = l.resetsAt ? Date.parse(l.resetsAt) : Infinity
-  if (!b || now - b.t < 10 * 60000 || l.percentUsed <= b.p) {
-    return { lead: `${name} `, verdict: l.resetsAt ? `${span(reset - now)} 后重置` : '估算中…', tone: 'mu' }
-  }
+  if (!b || now - b.t < 10 * 60000 || l.percentUsed <= b.p) return { l, reset }
   const perHour = (l.percentUsed - b.p) / ((now - b.t) / 3600000)
-  const exhaust = now + ((100 - l.percentUsed) / perHour) * 3600000
-  const lead = `${name} ${perHour.toFixed(1)}%/h · `
-  if (exhaust >= reset) return { lead, verdict: '撑得到重置', tone: 'good' }
-  const leftMs = exhaust - now
-  return { lead, verdict: `约 ${span(leftMs)} 后用完`, tone: leftMs < 3600000 ? 'crit' : 'warn' }
+  return { l, reset, perHour, exhaust: now + ((100 - l.percentUsed) / perHour) * 3600000 }
 }
 
 const hitRate = (t: TurnRecord) => {
@@ -236,57 +239,91 @@ const hitRate = (t: TurnRecord) => {
   return all === 0 ? 0 : Math.round((t.cacheRead / all) * 100)
 }
 
-export const forecast = (m: Meter, now: number): Burn => {
-  const empty = m.rateLimits.find(l => l.percentUsed >= 100)
-  return empty
-    ? { lead: '', verdict: `${limitName(empty)} 额度已用完${empty.resetsAt ? ` · ${span(Date.parse(empty.resetsAt) - now)} 后恢复` : ''}`, tone: 'crit' }
-    : burn(m, 'five_hour', now)
-}
-
-export const lastLine = (last: TurnRecord | null) =>
-  last
-    ? `上轮 ${[
-        last.cost !== undefined && usd(last.cost),
-        last.ms !== undefined && dur(last.ms),
-        `输出 ${fmt(last.output)}`,
-        `缓存 ${hitRate(last)}%`,
-      ]
-        .filter(Boolean)
-        .join(' · ')}`
-    : '上轮 —'
-
 const twinkle = (x: number, y: number) =>
   `<path class="tw" fill="var(--s4)" d="M${x + 2} ${y}h2v2h2v2h-2v2h-2v-2h-2v-2h2z"/>`
 
-export const bandSvg = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act): Drawing => {
-  const H = 36
+export type Tone = 'good' | 'warn' | 'crit' | ''
+
+export type Stat = { label: string; value: string; tone: Tone; sep?: boolean; sparkle?: boolean }
+
+export const stats = (m: Meter, last: TurnRecord | null, now: number): Stat[] => {
+  const list: Stat[] = []
+  const empty = m.rateLimits.find(l => l.percentUsed >= 100)
+  const p = pace(m, 'five_hour', now)
+  if (empty) {
+    list.push({ label: `${limitName(empty)} 用完·恢复`, value: empty.resetsAt ? span(Date.parse(empty.resetsAt) - now) : '-', tone: 'crit' })
+  } else if (p) {
+    const name = limitName(p.l)
+    const toReset = p.l.resetsAt ? span(p.reset - now) : '-'
+    if (p.perHour === undefined || p.exhaust === undefined) {
+      list.push({ label: `${name} 距重置`, value: toReset, tone: '' })
+    } else {
+      const leftMs = p.exhaust - now
+      list.push({ label: `${name} 速度`, value: `${p.perHour.toFixed(1)}%/h`, tone: '' })
+      list.push(
+        p.exhaust >= p.reset
+          ? { label: '撑到重置', value: toReset, tone: 'good' }
+          : { label: '预计用完', value: span(leftMs), tone: leftMs < 3600000 ? 'crit' : 'warn' },
+      )
+    }
+  }
+  if (list[0]) list[0].sep = true
+  if (m.cost != null) list.push({ label: '本会话', value: usd(m.cost), tone: '', sep: true })
+  if (!last) {
+    list.push({ label: '上轮', value: '-', tone: '', sep: true })
+    return list
+  }
+  const turn: Stat[] = [
+    ...(last.ms !== undefined ? [{ label: '上轮', value: dur(last.ms), tone: '' as const }] : []),
+    { label: '输出', value: fmt(last.output), tone: '' },
+    { label: '缓存', value: `${hitRate(last)}%`, tone: '', sparkle: hitRate(last) >= 90 },
+  ]
+  turn[0]!.sep = true
+  return [...list, ...turn]
+}
+
+const TILE_H = 30
+const LABEL_Y = 11
+const VALUE_Y = 27
+
+const svg = (w: number, h: number, body: string, alt: string): Drawing => {
+  const W = Math.ceil(w)
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" shape-rendering="crispEdges">${STYLE}${body}</svg>`,
+    width: W,
+    height: h,
+    alt,
+  }
+}
+
+const label = (s: string) => `<text x="0" y="${LABEL_Y}" font-size="10" class="mu">${esc(s)}</text>`
+
+const value = (s: string, x: number, tone: Tone) => `<text x="${x}" y="${VALUE_Y}" class="v${tone ? ` ${tone}` : ''}">${esc(s)}</text>`
+
+const divider = () => svg(2, TILE_H, `<rect x="0" y="5" width="2" height="22" fill="var(--grid)"/>`, '|')
+
+export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
   const gs = gauges(m)
   const empty = m.rateLimits.find(l => l.percentUsed >= 100)
-  const mode: Act = isWorking ? (act === 'idle' || act === 'sleep' ? 'thinking' : act) : act
+  const busy = act === 'thinking' || act === 'tool' || act === 'writing' || act === 'reading' || act === 'delegating' || act === 'responding'
+  const mode: Act = isWorking ? (act === 'idle' || act === 'sleep' ? 'thinking' : act) : busy ? 'idle' : act
   const pose: Pose = empty
     ? { mode: 'flat', level: 100, celebrate: false }
     : {
         mode,
         level: Math.max(0, ...gs.map(g => g.p)),
-        celebrate: mode === 'idle' && !!last && now - last.at < 15000,
+        celebrate: mode === 'idle' && act === 'idle' && !!last && now - last.at < 15000,
       }
-  const out: string[] = [clawd(4, 10, 2, pose)]
-  let x = 58
+  const parts: Drawing[] = [svg(60, 40, clawd(4, 10, 2, pose) + (helpers > 0 ? helper(38, 30, 1) : '') + (chores > 0 ? terminal(6, 31) : ''), 'Clawd')]
   gs.forEach((g, i) => {
-    out.push(`<text x="${x}" y="12" font-size="10" class="mu">${esc(g.name)}</text>`)
-    out.push(pixBar(x, 17, 10, 5, 10, 1.5, g.p, i * 120))
-    const digits = pixelText(`${g.p}%`, x + 69, 19, 1.6, 'var(--ink)')
-    out.push(digits.svg)
-    x += 69 + digits.width + 16
+    const pct = `${g.p}%`
+    parts.push(svg(70 + textWidth('100%', 13), TILE_H, `${label(g.name)}${pixBar(0, 17, 10, 5, 10, 1.5, g.p, i * 120)}${value(pct, 70, '')}`, `${g.name} ${pct}`))
   })
-  const b = forecast(m, now)
-  const line2 = lastLine(last)
-  out.push(`<rect x="${x - 6}" y="8" width="2" height="22" fill="var(--grid)"/>`)
-  x += 6
-  out.push(`<text x="${x}" y="15" font-size="11" class="t2">${esc(b.lead)}<tspan class="${b.tone}">${esc(b.verdict)}</tspan></text>`)
-  out.push(`<text x="${x}" y="30" font-size="11" class="t2">${esc(line2)}</text>`)
-  if (last && hitRate(last) >= 90) out.push(twinkle(Math.ceil(x + textWidth(line2, 11)) + 4, 21))
-  const W = Math.ceil(x + Math.max(textWidth(b.lead + b.verdict, 11), textWidth(line2, 11) + 14) + 6)
-  const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges">${STYLE}${out.join('')}</svg>`
-  return { source, width: W, height: H }
+  for (const s of stats(m, last, now)) {
+    if (s.sep) parts.push(divider())
+    const vw = textWidth(s.value, 13)
+    const spark = s.sparkle ? twinkle(vw + 1, 12) : ''
+    parts.push(svg(Math.max(textWidth(s.label, 10), vw + (s.sparkle ? 9 : 0)), TILE_H, `${label(s.label)}${value(s.value, 0, s.tone)}${spark}`, `${s.label} ${s.value}`))
+  }
+  return parts
 }
