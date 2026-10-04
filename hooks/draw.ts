@@ -183,7 +183,7 @@ const pixelText = (s: string, x: number, y: number, u: number, fill: string) => 
   return { svg: `<path d="${cellsPath(cells, x, y, u, u)}" fill="${fill}"/>`, width: (cx - 1) * u }
 }
 
-const statusFill = (p: number) => (p >= 90 ? 'var(--crit)' : p >= 70 ? 'var(--warn)' : 'var(--good)')
+const statusFill = (p: number) => (p >= 90 ? 'var(--crit)' : p >= 75 ? 'var(--warn)' : 'var(--good)')
 
 const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: number, p: number, delay = 0) => {
   const filled = p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0
