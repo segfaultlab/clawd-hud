@@ -4,14 +4,14 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Act, Limit, Meter } from '../types'
 import { bandSvg, fmt, limitName } from './draw'
 
-const live = atom({ plugin: 'token-meter', key: 'live' } as const, null)
-const meter = atom({ plugin: 'token-meter', key: 'meter' } as const, {
+const live = atom({ plugin: 'clawd-hud', key: 'live' } as const, null)
+const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
   context: null,
   rateLimits: [],
   base: {},
 })
-const last = atom({ plugin: 'token-meter', key: 'last' } as const, null)
-const act = atom({ plugin: 'token-meter', key: 'act' } as const, 'idle')
+const last = atom({ plugin: 'clawd-hud', key: 'last' } as const, null)
+const act = atom({ plugin: 'clawd-hud', key: 'act' } as const, 'idle')
 
 const SLEEP_AFTER = 10 * 60000
 

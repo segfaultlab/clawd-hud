@@ -1,4 +1,4 @@
-# token-meter
+# clawd-hud
 
 Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一只会跟着状态做动作的像素 Clawd。
 
@@ -12,7 +12,7 @@ Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一�
 ## 加载
 
 ```bash
-claude --plugin-dir /path/to/token-meter
+claude --plugin-dir /path/to/clawd-hud
 ```
 
 桌面端可在 `~/.claude/settings.json` 的 `env` 里设置 `CLAUDE_CODE_PLUGIN_DIRS` 指向本目录。

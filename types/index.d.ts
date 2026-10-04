@@ -22,6 +22,6 @@ export type Meter = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'token-meter': { live: Live | null; meter: Meter; last: TurnRecord | null; act: Act }
+    'clawd-hud': { live: Live | null; meter: Meter; last: TurnRecord | null; act: Act }
   }
 }
