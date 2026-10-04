@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter } from '../types'
-import { bandSvg, fmt, limitName } from './draw'
+import { bandSvg, fmt, forecast, lastLine, limitName } from './draw'
 
 const live = atom({ plugin: 'clawd-hud', key: 'live' } as const, null)
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
@@ -39,10 +39,12 @@ function warn($: EngineInterface, l: Limit) {
     const tag = `${l.kind}:${at}:${l.resetsAt ?? ''}`
     if (l.percentUsed >= at && !warned.has(tag)) {
       warned.add(tag)
-      $.ui.toast(`${limitName(l)} limit at ${l.percentUsed}%`)
+      $.ui.toast(`${limitName(l)} 额度已用 ${l.percentUsed}%`)
     }
   }
 }
+
+let costFrom: number | null = null
 
 let phase: Act = 'idle'
 let nap: { cancel: () => void } | null = null
@@ -78,6 +80,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     nap?.cancel()
+    costFrom = (await $.session.usage()).cost?.usd ?? null
     await setAct($, 'thinking')
     chars = 0
     await update($, live, () => ({ out: 0, est: 0 }))
@@ -86,6 +89,7 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     if (e.agentId) return yield* next(e)
+    await setAct($, 'thinking')
     for await (const c of next(e)) {
       if (c.kind === 'thinking') await setAct($, 'thinking')
       if (c.kind === 'tool') await setAct($, 'tool')
@@ -113,12 +117,15 @@ export const register: Register = on => {
     if (e.usage) {
       const at = await $.clock.now()
       const u = e.usage
+      const total = (await $.session.usage()).cost?.usd
       await update($, last, () => ({
         at,
         input: u.input_tokens,
         output: u.output_tokens,
         cacheRead: u.cache_read_input_tokens,
         cacheWrite: u.cache_creation_input_tokens,
+        ms: e.durationMs,
+        cost: costFrom !== null && total !== undefined ? total - costFrom : undefined,
       }))
     }
     await update($, live, () => null)
@@ -140,9 +147,22 @@ export const register: Register = on => {
     const a = await read($, act)
 
     if (e.surface !== 'desktop') {
-      const { Text } = $.ui.resolve(e)
+      const { Box, Text } = $.ui.resolve(e)
       const parts = [`ctx ${m.context?.percent ?? '—'}%`, ...m.rateLimits.map(l => `${limitName(l)} ${l.percentUsed}%`)]
-      return <Text dimColor>{parts.join(' · ')}</Text>
+      const b = forecast(m, await $.clock.now())
+      const tone = { good: 'green', warn: 'yellow', crit: 'red', mu: undefined }[b.tone]
+      return (
+        <Box flexWrap="wrap" columnGap={3}>
+          <Text dimColor>{parts.join(' · ')}</Text>
+          {b.verdict ? (
+            <Box>
+              <Text dimColor>{b.lead}</Text>
+              <Text color={tone} dimColor={!tone}>{b.verdict}</Text>
+            </Box>
+          ) : null}
+          <Text dimColor>{lastLine(t)}</Text>
+        </Box>
+      )
     }
 
     const { Svg } = $.ui.resolve(e)

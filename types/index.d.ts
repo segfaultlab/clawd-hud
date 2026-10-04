@@ -8,6 +8,8 @@ export type TurnRecord = {
   output: number
   cacheRead: number
   cacheWrite: number
+  ms?: number
+  cost?: number
 }
 
 export type Limit = { kind: string; percentUsed: number; resetsAt?: string }

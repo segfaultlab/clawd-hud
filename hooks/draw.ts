@@ -11,6 +11,13 @@ const span = (ms: number) => {
   return d > 0 ? `${d}d${h}h` : h > 0 ? `${h}h${m}m` : `${m}m`
 }
 
+const dur = (ms: number) => {
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${s % 60}s` : span(ms)
+}
+
+const usd = (n: number) => (n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`)
+
 const LIMIT_NAMES: Record<string, string> = {
   five_hour: '5h',
   seven_day: 'wk',
@@ -205,27 +212,48 @@ const gauges = (m: Meter): Gauge[] => {
   return list
 }
 
-type Burn = { rate: string; verdict: string; tone: 'good' | 'warn' | 'crit' | 'mu' }
+export type Burn = { lead: string; verdict: string; tone: 'good' | 'warn' | 'crit' | 'mu' }
 
 const burn = (m: Meter, kind: string, now: number): Burn => {
   const l = m.rateLimits.find(x => x.kind === kind)
+  if (!l) return { lead: '', verdict: '', tone: 'mu' }
+  const name = limitName(l)
   const b = m.base[kind]
-  if (!l || !b || now - b.t < 10 * 60000 || l.percentUsed <= b.p) {
-    return { rate: '', verdict: 'estimating…', tone: 'mu' }
+  const reset = l.resetsAt ? Date.parse(l.resetsAt) : Infinity
+  if (!b || now - b.t < 10 * 60000 || l.percentUsed <= b.p) {
+    return { lead: `${name} `, verdict: l.resetsAt ? `${span(reset - now)} 后重置` : '估算中…', tone: 'mu' }
   }
   const perHour = (l.percentUsed - b.p) / ((now - b.t) / 3600000)
   const exhaust = now + ((100 - l.percentUsed) / perHour) * 3600000
-  const reset = l.resetsAt ? Date.parse(l.resetsAt) : Infinity
-  const rate = `${perHour.toFixed(1)}%/h `
-  if (exhaust >= reset) return { rate, verdict: 'lasts till reset', tone: 'good' }
+  const lead = `${name} ${perHour.toFixed(1)}%/h · `
+  if (exhaust >= reset) return { lead, verdict: '撑得到重置', tone: 'good' }
   const leftMs = exhaust - now
-  return { rate, verdict: `empty in ~${span(leftMs)}`, tone: leftMs < 3600000 ? 'crit' : 'warn' }
+  return { lead, verdict: `约 ${span(leftMs)} 后用完`, tone: leftMs < 3600000 ? 'crit' : 'warn' }
 }
 
 const hitRate = (t: TurnRecord) => {
   const all = t.input + t.cacheRead + t.cacheWrite
   return all === 0 ? 0 : Math.round((t.cacheRead / all) * 100)
 }
+
+export const forecast = (m: Meter, now: number): Burn => {
+  const empty = m.rateLimits.find(l => l.percentUsed >= 100)
+  return empty
+    ? { lead: '', verdict: `${limitName(empty)} 额度已用完${empty.resetsAt ? ` · ${span(Date.parse(empty.resetsAt) - now)} 后恢复` : ''}`, tone: 'crit' }
+    : burn(m, 'five_hour', now)
+}
+
+export const lastLine = (last: TurnRecord | null) =>
+  last
+    ? `上轮 ${[
+        last.cost !== undefined && usd(last.cost),
+        last.ms !== undefined && dur(last.ms),
+        `输出 ${fmt(last.output)}`,
+        `缓存 ${hitRate(last)}%`,
+      ]
+        .filter(Boolean)
+        .join(' · ')}`
+    : '上轮 —'
 
 const twinkle = (x: number, y: number) =>
   `<path class="tw" fill="var(--s4)" d="M${x + 2} ${y}h2v2h2v2h-2v2h-2v-2h-2v-2h2z"/>`
@@ -251,19 +279,14 @@ export const bandSvg = (m: Meter, last: TurnRecord | null, now: number, isWorkin
     out.push(digits.svg)
     x += 69 + digits.width + 16
   })
-  const b: Burn = empty
-    ? { rate: '', verdict: `${limitName(empty)} limit hit · back in ${empty.resetsAt ? span(Date.parse(empty.resetsAt) - now) : '?'}`, tone: 'crit' }
-    : burn(m, 'five_hour', now)
-  const line1 = empty ? '' : `5h burn ${b.rate}`
-  const line2 = last
-    ? `last ↑${fmt(last.input + last.cacheRead + last.cacheWrite)} ↓${fmt(last.output)} cache ${hitRate(last)}%`
-    : 'last —'
+  const b = forecast(m, now)
+  const line2 = lastLine(last)
   out.push(`<rect x="${x - 6}" y="8" width="2" height="22" fill="var(--grid)"/>`)
   x += 6
-  out.push(`<text x="${x}" y="15" font-size="11" class="t2">${esc(line1)}<tspan class="${b.tone}">${esc(b.verdict)}</tspan></text>`)
+  out.push(`<text x="${x}" y="15" font-size="11" class="t2">${esc(b.lead)}<tspan class="${b.tone}">${esc(b.verdict)}</tspan></text>`)
   out.push(`<text x="${x}" y="30" font-size="11" class="t2">${esc(line2)}</text>`)
   if (last && hitRate(last) >= 90) out.push(twinkle(Math.ceil(x + textWidth(line2, 11)) + 4, 21))
-  const W = Math.ceil(x + Math.max(textWidth(line1 + b.verdict, 11), textWidth(line2, 11) + 14) + 6)
+  const W = Math.ceil(x + Math.max(textWidth(b.lead + b.verdict, 11), textWidth(line2, 11) + 14) + 6)
   const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges">${STYLE}${out.join('')}</svg>`
   return { source, width: W, height: H }
 }
