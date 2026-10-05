@@ -2,7 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter } from '../types'
-import { bandParts, filledCells, gauges, level, limitName, stats } from './draw'
+import { bandParts, bandPose, filledCells, gauges, level, limitName, stats } from './draw'
+import { barAnim, clawdAnim, TICK, twinkleAnim } from './term'
+import type { Anim } from './term'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
   context: null,
@@ -93,6 +95,40 @@ let shown: Act | null = null
 let queue: Promise<void> = Promise.resolve()
 let nap: { cancel: () => void } | null = null
 let recount: { cancel: () => void } | null = null
+let ticker: { cancel: () => void } | null = null
+let frame = 0
+let mounted: { requestId: string; anims: Anim[] } | null = null
+const starts = new Map<string, { sig: string; frame: number }>()
+const painted = new Map<string, string>()
+
+const encode = (a: Anim, start: number) =>
+  (new Uint8Array(a.draw((frame - start) * TICK).buffer) as Uint8Array & { toBase64(): string }).toBase64()
+
+function paint(a: Anim) {
+  const s = starts.get(a.key)
+  const start = s && s.sig === a.sig ? s.frame : frame
+  starts.set(a.key, { sig: a.sig, frame: start })
+  const cells = encode(a, start)
+  painted.set(a.key, cells)
+  return cells
+}
+
+function animate($: EngineInterface) {
+  ticker?.cancel()
+  ticker = $.clock.every(TICK, () => {
+    frame++
+    const at = mounted
+    if (!at) return
+    for (const a of at.anims) {
+      const cells = encode(a, starts.get(a.key)?.frame ?? frame)
+      if (cells === painted.get(a.key)) continue
+      painted.set(a.key, cells)
+      void $.ui.blit({ requestId: at.requestId, key: a.key, cells }).then(r => {
+        if (r.deny && mounted === at) mounted = null
+      })
+    }
+  })
+}
 
 const argsKey = (v: unknown) =>
   JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x))
@@ -163,6 +199,7 @@ export const register: Register = on => {
     const u = await $.session.usage()
     if (g === gen) await setMeter($, { context: u.context, rateLimits: u.rateLimits, cost: u.cost?.usd ?? null })
     await reset($)
+    animate($)
     return next(e)
   })
 
@@ -321,33 +358,45 @@ export const register: Register = on => {
     if (e.surface !== 'desktop') {
       const { Box, Text } = $.ui.resolve(e)
       const color = { good: 'green', warn: 'yellow', crit: 'red', '': undefined } as const
-      return (
-        <Box flexWrap="wrap" justifyContent="space-between" columnGap={2} width={e.props.bodyColumns}>
-          {gauges(m).map(g => {
+      const now = await $.clock.now()
+      const Raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : null
+      const anims: Anim[] = []
+      const live = (a: Anim) => {
+        if (!Raster) return null
+        anims.push(a)
+        return <Raster key={a.key} columns={a.columns} rows={a.rows} cells={paint(a)} />
+      }
+      const tree = (
+        <Box flexWrap="wrap" justifyContent="space-between" alignItems="center" columnGap={2} width={e.props.bodyColumns}>
+          {live(clawdAnim(bandPose(m, t, now, e.props.isWorking, a), crew > 0, shells > 0))}
+          {gauges(m).map((g, i) => {
             const n = filledCells(g.p, 10)
+            const bar = live(barAnim(`bar-${g.name}`, g.p, i * 120))
             return (
               <Box flexDirection="column">
                 <Text dimColor>{g.name}</Text>
                 <Box>
-                  <Text color={color[level(g.p)]}>{'█'.repeat(n)}</Text>
-                  <Text dimColor>{'░'.repeat(10 - n)}</Text>
+                  {bar ?? <Text color={color[level(g.p)]}>{'█'.repeat(n)}</Text>}
+                  {bar ? null : <Text dimColor>{'░'.repeat(10 - n)}</Text>}
                   <Text bold> {g.p}%</Text>
                 </Box>
               </Box>
             )
           })}
-          {stats(m, t, await $.clock.now()).flatMap(s => [
+          {stats(m, t, now).flatMap(s => [
             ...(s.sep ? [<Text dimColor>{'│\n│'}</Text>] : []),
             <Box flexDirection="column">
               <Text dimColor>{s.label}</Text>
               <Box>
                 <Text bold color={color[s.tone]}>{s.value}</Text>
-                {s.sparkle ? <Text color="yellow">✦</Text> : null}
+                {s.sparkle ? (live(twinkleAnim('sparkle')) ?? <Text color="yellow">✦</Text>) : null}
               </Box>
             </Box>,
           ])}
         </Box>
       )
+      mounted = anims.length > 0 ? { requestId: e.requestId, anims } : null
+      return tree
     }
 
     const { Box, Svg } = $.ui.resolve(e)

@@ -13,7 +13,7 @@ Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一�
 
 只在本地读取 Claude Code 已有的用量数据，不额外消耗 token。
 
-Clawd 和动画只在 Claude 桌面端的 Code 页面显示；终端里显示的是文字版进度条。
+桌面端的 Code 页面用 SVG 绘制。终端里用方块字符画同一套 Clawd（5 行高），动作和桌面端一一对应，进度条的逐格亮起、高光扫过、快满时闪烁也一样有。终端字符格比像素粗，细节会简化一些，比如走路时身体上下晃一整个半格。
 
 ## 安装
 
@@ -59,5 +59,7 @@ node scripts/preview.ts
 
 - `hooks/register.tsx`：事件钩子，读取用量、跟踪状态
 - `hooks/draw.ts`：生成横条的 SVG（像素 Clawd、进度条、动画）
+- `hooks/term.ts`：终端版的每一帧，用方块字符画 Clawd、进度条和缓存命中的小星星
 - `types/index.d.ts`：mod 保存的状态类型
 - `scripts/preview.ts`：生成 `docs/` 下的效果图
+- `tests/band.test.tsx`：横条在终端和桌面端的渲染测试，用 `claude plugin test .` 运行

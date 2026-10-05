@@ -85,16 +85,16 @@ text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}.v{font-size:13p
 const cellsPath = (cells: readonly (readonly [number, number])[], x: number, y: number, w: number, h: number) =>
   cells.map(([cx, cy]) => `M${x + cx * w} ${y + cy * h}h${w}v${h}h${-w}z`).join('')
 
-const BODY: [number, number][] = []
+export const BODY: [number, number][] = []
 for (let cx = 3; cx <= 14; cx++) BODY.push([cx, 0])
 for (let cx = 3; cx <= 14; cx++) if (cx !== 5 && cx !== 12) BODY.push([cx, 1])
 for (let cx = 1; cx <= 16; cx++) BODY.push([cx, 2])
 for (let cx = 3; cx <= 14; cx++) BODY.push([cx, 3])
-const EYES: [number, number][] = [[5, 1], [12, 1]]
-const LEGS_A: [number, number][] = [[4, 4], [6, 4], [11, 4], [13, 4]]
-const LEGS_B: [number, number][] = [[5, 4], [7, 4], [10, 4], [12, 4]]
+export const EYES: [number, number][] = [[5, 1], [12, 1]]
+export const LEGS_A: [number, number][] = [[4, 4], [6, 4], [11, 4], [13, 4]]
+export const LEGS_B: [number, number][] = [[5, 4], [7, 4], [10, 4], [12, 4]]
 
-type Pose = { mode: Act | 'flat'; level: number; celebrate: boolean }
+export type Pose = { mode: Act | 'flat'; level: number; celebrate: boolean }
 
 const flip = (cells: [number, number][]) => cells.map(([cx, cy]) => [cx, 4 - cy] as [number, number])
 
@@ -302,18 +302,22 @@ const value = (s: string, x: number, tone: Tone) => `<text x="${x}" y="${VALUE_Y
 
 const divider = () => svg(2, TILE_H, `<rect x="0" y="5" width="2" height="22" fill="var(--grid)"/>`, '|')
 
-export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
-  const gs = gauges(m)
+export const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act): Pose => {
   const empty = m.rateLimits.find(l => l.percentUsed >= 100)
   const busy = act === 'thinking' || act === 'tool' || act === 'writing' || act === 'reading' || act === 'delegating' || act === 'responding'
   const mode: Act = isWorking ? (act === 'idle' || act === 'sleep' ? 'thinking' : act) : busy ? 'idle' : act
-  const pose: Pose = empty
+  return empty
     ? { mode: 'flat', level: 100, celebrate: false }
     : {
         mode,
-        level: Math.max(0, ...gs.map(g => g.p)),
+        level: Math.max(0, ...gauges(m).map(g => g.p)),
         celebrate: mode === 'idle' && act === 'idle' && !!last && now - last.at < 15000,
       }
+}
+
+export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
+  const gs = gauges(m)
+  const pose = bandPose(m, last, now, isWorking, act)
   const parts: Drawing[] = [svg(60, 40, clawd(4, 10, 2, pose) + (helpers > 0 ? helper(38, 30, 1) : '') + (chores > 0 ? terminal(6, 31) : ''), 'Clawd')]
   gs.forEach((g, i) => {
     const pct = `${g.p}%`
