@@ -88,6 +88,7 @@ let base: Act = 'idle'
 let compacting = 0
 let epoch = 0
 let inTurn = false
+let stepActs: Act[] = []
 let shown: Act | null = null
 let queue: Promise<void> = Promise.resolve()
 let nap: { cancel: () => void } | null = null
@@ -148,6 +149,7 @@ async function reset($: EngineInterface) {
   jobs.clear()
   compacting = 0
   inTurn = false
+  stepActs = []
   shown = null
   await refresh($)
   await countJobs($)
@@ -182,7 +184,9 @@ export const register: Register = on => {
     const { tool, tool_use_id, agentId, consent, ...args } = e
     const ep = epoch
     try {
-      calls.set(tool_use_id, { tool, agent: agentId, input: argsKey(args), act: callAct(e), asking: tool === 'AskUserQuestion' })
+      const a = callAct(e)
+      if (!agentId) stepActs.push(a)
+      calls.set(tool_use_id, { tool, agent: agentId, input: argsKey(args), act: a, asking: tool === 'AskUserQuestion' })
       await refresh($)
       const r = await next(e)
       if (!agentId && tool === 'Bash' && args.run_in_background === true && !('deny' in r) && !('isError' in r && r.isError) && ep === epoch) {
@@ -260,6 +264,7 @@ export const register: Register = on => {
   on('turn.start', async ($, e, next) => {
     nap?.cancel()
     inTurn = true
+    stepActs = []
     await setBase($, 'thinking')
     await countHelpers($)
     return next(e)
@@ -267,9 +272,12 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     if (e.agentId) return yield* next(e)
-    await setBase($, 'thinking')
+    let mulling: Act = stepActs.length > 0 && stepActs.every(a => a === 'reading') ? 'reading' : 'thinking'
+    stepActs = []
+    await setBase($, mulling)
     for await (const c of next(e)) {
-      if (c.kind === 'thinking') await setBase($, 'thinking')
+      if (c.kind === 'thinking') await setBase($, mulling)
+      if (c.kind === 'tool' || c.kind === 'text') mulling = 'thinking'
       if (c.kind === 'tool') await setBase($, toolAct(c.name))
       if (c.kind === 'text') await setBase($, 'responding')
       yield c

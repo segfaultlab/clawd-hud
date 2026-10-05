@@ -4,7 +4,7 @@ Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一�
 
 - 上下文、5 小时额度、本周额度的格子进度条
 - 5 小时额度的消耗速度和预计用完时间
-- Clawd：思考冒 `?`、调用工具敲锤子、写文件拿笔写字、读文件和搜索捧书看、等你批准时举手、压缩上下文揉纸团、子代理干活时脚边跟着小 Clawd、有后台命令时脚边亮着小终端、写回复飘字、出错晕倒、中断摔倒、空闲睡觉、额度用完躺平
+- Clawd：思考冒 `?`、调用工具敲锤子、写文件拿笔写字、读文件和搜索捧书看（读完想下一步时也继续捧着）、等你批准时举手、压缩上下文揉纸团、子代理干活时脚边跟着小 Clawd、有后台命令时脚边亮着小终端、写回复飘字、出错晕倒、中断摔倒、空闲睡觉、额度用完躺平
 
 只在本地读取 Claude Code 已有的用量数据，不额外消耗 token。
 
@@ -26,11 +26,20 @@ claude plugin update clawd-hud@clawd-hud
 
 ## 本地开发
 
+改代码时直接加载源码目录，不用安装。终端里：
+
 ```bash
 claude --plugin-dir /path/to/clawd-hud
 ```
 
-桌面端可在 `~/.claude/settings.json` 的 `env` 里设置 `CLAUDE_CODE_PLUGIN_DIRS` 指向本目录。
+想让每个会话（包括桌面端）都加载，在 `~/.claude/settings.json` 的 `env` 里加：
+
+```json
+"CLAUDE_CODE_PLUGIN_DIRS": "/path/to/clawd-hud",
+"CLAUDE_CODE_PLUGIN_DIR_WATCH": "1"
+```
+
+终端里的会话本来就会监视这个目录，保存文件后自动重新加载；桌面端要加第二行才会。用这种方式时不要再用 `claude plugin install` 装一份，否则会出现两条横条。
 
 ## 文件
 
