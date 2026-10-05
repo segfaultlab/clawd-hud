@@ -8,7 +8,23 @@ Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一�
 
 只在本地读取 Claude Code 已有的用量数据，不额外消耗 token。
 
-## 加载
+## 安装
+
+```bash
+claude plugin marketplace add segfaultlab/clawd-hud
+claude plugin install clawd-hud@clawd-hud
+```
+
+装好后新开的会话自动生效，终端和桌面端都能用。更新：
+
+```bash
+claude plugin marketplace update clawd-hud
+claude plugin update clawd-hud@clawd-hud
+```
+
+5h 和 wk 两条来自订阅账号的额度数据，用 API key 登录时只显示 ctx。
+
+## 本地开发
 
 ```bash
 claude --plugin-dir /path/to/clawd-hud

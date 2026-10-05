@@ -1,0 +1,14 @@
+{
+  "name": "clawd-hud",
+  "owner": {
+    "name": "segfaultlab"
+  },
+  "description": "Pixel Clawd usage band for Claude Code",
+  "plugins": [
+    {
+      "name": "clawd-hud",
+      "source": "./",
+      "description": "Pixel Clawd usage band above the prompt"
+    }
+  ]
+}
