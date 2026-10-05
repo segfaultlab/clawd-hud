@@ -9,9 +9,9 @@ test('the terminal band draws Clawd as a Raster', async ($, on) => {
   mock.clock(on)
   const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'terminal', ...BAND })
   const clawd = await ui.find({ type: 'Raster', key: 'clawd' })
-  expect(clawd?.props.columns).toBe(11)
-  expect(clawd?.props.rows).toBe(2)
-  expect(String(clawd?.props.cells).length).toBe(352)
+  expect(clawd?.props.columns).toBe(14)
+  expect(clawd?.props.rows).toBe(3)
+  expect(String(clawd?.props.cells).length).toBe(672)
   await ui.unmount()
 })
 
@@ -53,15 +53,15 @@ test('a narrow terminal keeps the band on one line by shrinking it', async ($, o
 
   const wide = await at(100)
   expect(await wide.find({ type: 'Text', text: '上轮' })).toBeDefined()
-  expect((await wide.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(11)
+  expect((await wide.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(14)
   await wide.unmount()
 
   const narrow = await at(26)
   expect(await narrow.find({ type: 'Text', text: '上轮' })).toBeUndefined()
-  expect((await narrow.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(11)
+  expect((await narrow.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(14)
   await narrow.unmount()
 
-  const tight = await at(15)
-  expect((await tight.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(6)
+  const tight = await at(19)
+  expect((await tight.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(10)
   await tight.unmount()
 })
