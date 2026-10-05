@@ -85,14 +85,14 @@ text{fill:var(--ink)}.t2{fill:var(--ink2)}.mu{fill:var(--muted)}.v{font-size:13p
 const cellsPath = (cells: readonly (readonly [number, number])[], x: number, y: number, w: number, h: number) =>
   cells.map(([cx, cy]) => `M${x + cx * w} ${y + cy * h}h${w}v${h}h${-w}z`).join('')
 
-export const BODY: [number, number][] = []
+const BODY: [number, number][] = []
 for (let cx = 3; cx <= 14; cx++) BODY.push([cx, 0])
 for (let cx = 3; cx <= 14; cx++) if (cx !== 5 && cx !== 12) BODY.push([cx, 1])
 for (let cx = 1; cx <= 16; cx++) BODY.push([cx, 2])
 for (let cx = 3; cx <= 14; cx++) BODY.push([cx, 3])
-export const EYES: [number, number][] = [[5, 1], [12, 1]]
-export const LEGS_A: [number, number][] = [[4, 4], [6, 4], [11, 4], [13, 4]]
-export const LEGS_B: [number, number][] = [[5, 4], [7, 4], [10, 4], [12, 4]]
+const EYES: [number, number][] = [[5, 1], [12, 1]]
+const LEGS_A: [number, number][] = [[4, 4], [6, 4], [11, 4], [13, 4]]
+const LEGS_B: [number, number][] = [[5, 4], [7, 4], [10, 4], [12, 4]]
 
 export type Pose = { mode: Act | 'flat'; level: number; celebrate: boolean }
 

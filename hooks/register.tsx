@@ -2,9 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter } from '../types'
-import { bandParts, bandPose, filledCells, gauges, level, limitName, stats } from './draw'
-import { barAnim, clawdAnim, fitBand, TICK, twinkleAnim } from './term'
-import type { Anim } from './term'
+import { bandParts, bandPose, gauges, limitName, stats } from './draw'
+import { barCells, barColor, clawdAnim, fitBand, TICK, twinkleAnim } from './term'
+import type { Anim, BarCell } from './term'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
   context: null,
@@ -97,21 +97,30 @@ let nap: { cancel: () => void } | null = null
 let recount: { cancel: () => void } | null = null
 let ticker: { cancel: () => void } | null = null
 let frame = 0
-let mounted: { requestId: string; anims: Anim[] } | null = null
+type Bar = { key: string; p: number; n: number; delay: number }
+
+let mounted: { requestId: string; anims: Anim[]; bars: Bar[] } | null = null
+let barsShown = ''
 const starts = new Map<string, { sig: string; frame: number }>()
 const painted = new Map<string, string>()
+
+function since(key: string, sig: string) {
+  const s = starts.get(key)
+  const start = s && s.sig === sig ? s.frame : frame
+  starts.set(key, { sig, frame: start })
+  return start
+}
 
 const encode = (a: Anim, start: number) =>
   (new Uint8Array(a.draw((frame - start) * TICK).buffer) as Uint8Array & { toBase64(): string }).toBase64()
 
 function paint(a: Anim) {
-  const s = starts.get(a.key)
-  const start = s && s.sig === a.sig ? s.frame : frame
-  starts.set(a.key, { sig: a.sig, frame: start })
-  const cells = encode(a, start)
+  const cells = encode(a, since(a.key, a.sig))
   painted.set(a.key, cells)
   return cells
 }
+
+const barNow = (b: Bar) => barCells(b.p, b.n, b.delay, (frame - (starts.get(b.key)?.frame ?? frame)) * TICK)
 
 function animate($: EngineInterface) {
   ticker?.cancel()
@@ -119,6 +128,11 @@ function animate($: EngineInterface) {
     frame++
     const at = mounted
     if (!at) return
+    const bars = JSON.stringify(at.bars.map(barNow))
+    if (bars !== barsShown) {
+      barsShown = bars
+      $.ui.invalidate('ui.render')
+    }
     for (const a of at.anims) {
       const cells = encode(a, starts.get(a.key)?.frame ?? frame)
       if (cells === painted.get(a.key)) continue
@@ -361,6 +375,7 @@ export const register: Register = on => {
       const now = await $.clock.now()
       const Raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : null
       const anims: Anim[] = []
+      const bars: Bar[] = []
       const live = (a: Anim) => {
         if (!Raster) return null
         anims.push(a)
@@ -374,14 +389,22 @@ export const register: Register = on => {
             ? null
             : live(clawdAnim(bandPose(m, t, now, e.props.isWorking, a), fit.clawd === 'side' && crew > 0, fit.clawd === 'side' && shells > 0, fit.clawd === 'bare'))}
           {gs.map((g, i) => {
-            const n = filledCells(g.p, fit.bar)
-            const bar = live(barAnim(`bar-${g.name}`, g.p, i * 120, fit.bar))
+            const bar: Bar = { key: `bar-${g.name}`, p: g.p, n: fit.bar, delay: i * 120 }
+            since(bar.key, `${g.p}:${fit.bar}`)
+            bars.push(bar)
+            const runs: { cell: BarCell; count: number }[] = []
+            for (const cell of barNow(bar)) {
+              const last = runs.at(-1)
+              if (last?.cell === cell) last.count++
+              else runs.push({ cell, count: 1 })
+            }
             return (
               <Box flexDirection="column" flexShrink={0}>
                 <Text dimColor>{g.name}</Text>
                 <Box>
-                  {bar ?? <Text color={color[level(g.p)]}>{'█'.repeat(n)}</Text>}
-                  {bar ? null : <Text dimColor>{'░'.repeat(fit.bar - n)}</Text>}
+                  {runs.map(r =>
+                    r.cell === 'track' ? <Text dimColor>{'▌'.repeat(r.count)}</Text> : <Text color={barColor(g.p, r.cell)}>{'▌'.repeat(r.count)}</Text>,
+                  )}
                   <Text bold> {g.p}%</Text>
                 </Box>
               </Box>
@@ -401,7 +424,8 @@ export const register: Register = on => {
           ])}
         </Box>
       )
-      mounted = anims.length > 0 ? { requestId: e.requestId, anims } : null
+      mounted = anims.length > 0 || bars.length > 0 ? { requestId: e.requestId, anims, bars } : null
+      barsShown = JSON.stringify(bars.map(barNow))
       return tree
     }
 
