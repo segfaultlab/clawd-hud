@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter } from '../types'
 import { bandParts, bandPose, filledCells, gauges, level, limitName, stats } from './draw'
-import { barAnim, clawdAnim, TICK, twinkleAnim } from './term'
+import { barAnim, clawdAnim, fitBand, TICK, twinkleAnim } from './term'
 import type { Anim } from './term'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
@@ -366,32 +366,38 @@ export const register: Register = on => {
         anims.push(a)
         return <Raster key={a.key} columns={a.columns} rows={a.rows} cells={paint(a)} />
       }
+      const gs = gauges(m)
+      const fit = fitBand(e.props.bodyColumns, gs, stats(m, t, now), Raster ? (crew > 0 || shells > 0 ? 'side' : 'full') : 'none')
       const tree = (
-        <Box flexWrap="wrap" justifyContent="space-between" alignItems="center" columnGap={2} width={e.props.bodyColumns}>
-          {live(clawdAnim(bandPose(m, t, now, e.props.isWorking, a), crew > 0, shells > 0))}
-          {gauges(m).map((g, i) => {
-            const n = filledCells(g.p, 10)
-            const bar = live(barAnim(`bar-${g.name}`, g.p, i * 120))
+        <Box flexWrap="nowrap" justifyContent="space-between" alignItems="center" columnGap={fit.gap} width={e.props.bodyColumns}>
+          {fit.clawd === 'none'
+            ? null
+            : live(clawdAnim(bandPose(m, t, now, e.props.isWorking, a), fit.clawd === 'side' && crew > 0, fit.clawd === 'side' && shells > 0, fit.clawd === 'bare'))}
+          {gs.map((g, i) => {
+            const n = filledCells(g.p, fit.bar)
+            const bar = live(barAnim(`bar-${g.name}`, g.p, i * 120, fit.bar))
             return (
-              <Box flexDirection="column">
+              <Box flexDirection="column" flexShrink={0}>
                 <Text dimColor>{g.name}</Text>
                 <Box>
                   {bar ?? <Text color={color[level(g.p)]}>{'█'.repeat(n)}</Text>}
-                  {bar ? null : <Text dimColor>{'░'.repeat(10 - n)}</Text>}
+                  {bar ? null : <Text dimColor>{'░'.repeat(fit.bar - n)}</Text>}
                   <Text bold> {g.p}%</Text>
                 </Box>
               </Box>
             )
           })}
-          {stats(m, t, now).flatMap(s => [
-            ...(s.sep ? [<Text dimColor>{'│\n│'}</Text>] : []),
-            <Box flexDirection="column">
-              <Text dimColor>{s.label}</Text>
-              <Box>
-                <Text bold color={color[s.tone]}>{s.value}</Text>
-                {s.sparkle ? (live(twinkleAnim('sparkle')) ?? <Text color="yellow">✦</Text>) : null}
+          {fit.groups.flatMap(group => [
+            <Text dimColor>{'│\n│'}</Text>,
+            ...group.map(s => (
+              <Box flexDirection="column" flexShrink={0}>
+                <Text dimColor>{s.label}</Text>
+                <Box>
+                  <Text bold color={color[s.tone]}>{s.value}</Text>
+                  {s.sparkle ? (live(twinkleAnim('sparkle')) ?? <Text color="yellow">✦</Text>) : null}
+                </Box>
               </Box>
-            </Box>,
+            )),
           ])}
         </Box>
       )

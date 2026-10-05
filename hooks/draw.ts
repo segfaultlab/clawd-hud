@@ -213,7 +213,7 @@ const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: nu
   return out.join('')
 }
 
-type Gauge = { name: string; p: number }
+export type Gauge = { name: string; p: number }
 
 export const gauges = (m: Meter): Gauge[] => {
   const list: Gauge[] = []

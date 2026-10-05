@@ -1,4 +1,4 @@
-import { BODY, EYES, LEGS_A, LEGS_B, filledCells, level, type Pose } from './draw'
+import { BODY, EYES, LEGS_A, LEGS_B, filledCells, level, type Gauge, type Pose, type Stat } from './draw'
 
 export const TICK = 80
 
@@ -59,11 +59,11 @@ const pack = (g: Grid) => {
       const quad = [g.px[2 * r * pw + 2 * c], g.px[2 * r * pw + 2 * c + 1], g.px[(2 * r + 1) * pw + 2 * c], g.px[(2 * r + 1) * pw + 2 * c + 1]]
       const counts = new Map<number, number>()
       for (const q of quad) if (q !== undefined) counts.set(q, (counts.get(q) ?? 0) + 1)
-      const [a, b] = [...counts].sort((x, y) => y[1] - x[1])
-      const blank = quad.filter(q => q === undefined).length
-      const fg = a?.[0] ?? DEFAULT
-      const bg = b && b[1] > blank ? b[0] : DEFAULT
-      const mask = quad.reduce<number>((m, q, k) => (a && q === fg ? m | (1 << k) : m), 0)
+      const [a, b] = [...counts].sort((x, y) => y[1] - x[1] || (x[0] === quad[2] ? 1 : -1))
+      const full = !quad.includes(undefined)
+      const bg = full && a ? a[0] : DEFAULT
+      const fg = full ? (b?.[0] ?? DEFAULT) : (a?.[0] ?? DEFAULT)
+      const mask = quad.reduce<number>((m, q, k) => (q !== undefined && q === fg ? m | (1 << k) : m), 0)
       words.set([QUAD.codePointAt(mask)!, fg, bg], i * 3)
     }
   }
@@ -71,17 +71,19 @@ const pack = (g: Grid) => {
 }
 
 const COLS = 15
-const ROWS = 5
-const OX = 2
-const OY = 2
+const ROWS = 3
+const SIDE = 5
+const BARE = 10
+const OX = 1
+const EYE = 0x000000
 
-const trim = (cells: Cells): Cells => cells.filter(([cx, cy]) => cy !== 0 || (cx > 3 && cx < 14))
 const fallen = (cells: Cells): Cells => cells.filter(([, cy]) => cy !== 0 && cy !== 3).map(([cx, cy]) => [cx, cy === 4 ? 4 : cy + 1])
 const upside = (cells: Cells): Cells => cells.map(([cx, cy]) => [cx, 4 - cy])
+const tall = (cells: Cells): Cells => [...cells, ...cells.map(([cx, cy]): [number, number] => [cx, cy + 1])]
 
-const MINI: Cells = [[1, 0], [3, 0], [4, 0], [5, 0], [7, 0], ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((x): [number, number] => [x, 1])]
-const MINI_A: Cells = [[1, 2], [3, 2], [5, 2], [7, 2]]
-const MINI_B: Cells = [[2, 2], [4, 2], [6, 2], [8, 2]]
+const MINI: Cells = [[0, 0], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0]]
+const MINI_A: Cells = [[0, 1], [2, 1], [5, 1], [7, 1]]
+const MINI_B: Cells = [[1, 1], [3, 1], [4, 1], [6, 1]]
 
 const zzz = (g: Grid, ms: number) => {
   const path: [number, number, string][] = [[9, 1, 'z'], [9, 1, 'z'], [10, 1, 'z'], [10, 0, 'Z'], [11, 0, 'Z'], [11, 0, 'Z']]
@@ -94,48 +96,45 @@ const zzz = (g: Grid, ms: number) => {
 }
 
 const extras = (g: Grid, mode: Pose['mode'], ms: number, X: number) => {
-  if (mode === 'thinking') glyph(g, 10, second(ms, 1400) ? 0 : 1, '?')
+  const cx = (X - OX) / 2
+  if (mode === 'thinking') glyph(g, 9 + cx, second(ms, 1400) ? 0 : 1, '?')
   if (mode === 'tool') {
     if (second(ms, 500)) {
-      sprite(g, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]], X + 17, 4, HANDLE)
-      sprite(g, [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]], X + 22, 3, MUTED)
-      sprite(g, [[0, 0], [0, 4]], X + 25, 2, AMBER)
+      sprite(g, [[0, 0], [1, 0], [2, 0], [3, 0]], X + 17, 2, HANDLE)
+      sprite(g, [[0, 0], [1, 0], [0, 1], [1, 1]], X + 21, 2, MUTED)
+      sprite(g, [[0, 0], [0, 5]], X + 24, 0, AMBER)
     } else {
-      sprite(g, [[0, 0], [1, 0], [2, 0], [3, 0]], X + 16, 1, MUTED)
+      sprite(g, [[0, 0], [1, 0], [0, 1], [1, 1]], X + 17, 0, MUTED)
       sprite(g, [[0, 0], [0, 1]], X + 17, 2, HANDLE)
     }
   }
   if (mode === 'writing') {
-    const k = step(ms, 2000, 4)
-    const inked = [0, 1, 2, 3][k]!
-    for (let c = 0; c < 3; c++) glyph(g, 10 + c, 3, c < inked ? '─' : ' ', INK, PAPER)
-    const pen = X + 18 + 2 * Math.min(inked, 2)
-    sprite(g, [[0, 1], [1, 0]], pen, 4 - (second(ms, 160) ? 1 : 0), AMBER)
+    const inked = step(ms, 2000, 4)
+    for (let c = 0; c < 3; c++) glyph(g, 10 + cx + c, 2, c < inked ? '─' : ' ', INK, PAPER)
+    const pen = 2 * (10 + cx + Math.min(inked, 2))
+    sprite(g, second(ms, 160) ? [[0, 0], [1, 1]] : [[0, 1], [1, 0]], pen, 2, AMBER)
   }
   if (mode === 'reading') {
     const p = (ms % 3000) / 3000
-    const flipping = p < 0.72 ? [] : p < 0.8 ? [12, 13] : p < 0.88 ? [12] : p < 0.96 ? [11] : [10, 11]
-    for (let c = 10; c < 14; c++) {
+    const flipping = p < 0.72 ? [] : p < 0.8 ? [2, 3] : p < 0.88 ? [2] : p < 0.96 ? [1] : [0, 1]
+    for (let c = 0; c < 4; c++) {
       const page = flipping.includes(c) ? FLIP : PAGE
-      glyph(g, c, 1, '▄', page)
-      glyph(g, c, 2, '═', MUTED, page)
-      glyph(g, c, 3, '▀', page, BLUE)
+      glyph(g, 10 + cx + c, 1, '═', MUTED, page)
+      glyph(g, 10 + cx + c, 2, '▄', BLUE, page)
     }
   }
   if (mode === 'waiting') {
-    sprite(g, [[0, 0], [0, 1], [0, 2]], X + 17, 2, ORANGE)
-    sprite(g, [[0, 0], [2, 0]], X + 16 + (second(ms, 400) ? 1 : 0), 1, ORANGE)
+    sprite(g, [[0, 0], [0, 1]], X + 17 + (second(ms, 400) ? 1 : 0), 0, ORANGE)
     for (let i = 0; i < 3; i++) {
       const lit = ms >= i * 400 && ((ms - i * 400) % 1200) / 1200 < 0.41
-      dot(g, X + 20 + 2 * i, 1, lit ? DEFAULT : MUTED)
+      dot(g, X + 21 + 2 * i, 1, lit ? DEFAULT : MUTED)
     }
   }
   if (mode === 'compacting') {
     const k = step(ms, 1500, 3)
-    const cols = [[10, 11, 12], [11, 12], [11]][k]!
-    for (const c of cols) {
-      glyph(g, c, 2, k === 0 ? '═' : '▒', MUTED, PAGE)
-      glyph(g, c, 3, k === 0 ? ' ' : '▒', MUTED, PAGE)
+    for (const c of [[0, 1, 2], [1, 2], [1]][k]!) {
+      glyph(g, 10 + cx + c, 1, k === 0 ? '═' : '▒', MUTED, PAGE)
+      glyph(g, 10 + cx + c, 2, k === 0 ? ' ' : '▒', MUTED, PAGE)
     }
   }
   if (mode === 'responding') {
@@ -143,107 +142,112 @@ const extras = (g: Grid, mode: Pose['mode'], ms: number, X: number) => {
       const delay = i * 400
       if (ms < delay) continue
       const k = step(ms - delay, 1200, 4)
-      const x = X + 16 + i + Math.round(k * 0.25)
-      const y = 3 - Math.round(k * 0.625)
+      const x = X + 17 + i + Math.round(k * 0.25)
+      const y = k >= 2 ? 0 : 1
       const color = k < 2 ? DEFAULT : MUTED
       dot(g, x, y, color)
       if (i !== 1) dot(g, x + 1, y, color)
     }
   }
   if (mode === 'error') {
-    const orbit: [number, number][] = [[3, AMBER], [5, AMBER], [6, AMBER], [5, mix(AMBER, MUTED, 0.6)]]
+    const orbit: [number, number, number][] = [[9, 0, AMBER], [10, 0, AMBER], [11, 0, AMBER], [10, 1, mix(AMBER, MUTED, 0.6)]]
     for (let i = 0; i < 3; i++) {
-      const [col, color] = orbit[step(ms + i * 400, 1200, 4)]!
-      glyph(g, col + (X - OX), 0, '*', color)
+      const [col, row, color] = orbit[step(ms + i * 400, 1200, 4)]!
+      glyph(g, col + cx, row, '*', color)
     }
   }
   if (mode === 'aborted' && ms < 1120) glyph(g, 9, 0, '!', RED)
   if (mode === 'sleep') zzz(g, ms)
 }
 
-export const clawdAnim = (pose: Pose, helpers: boolean, chores: boolean): Anim => ({
-  key: 'clawd',
-  sig: JSON.stringify([pose, helpers, chores]),
-  columns: COLS,
-  rows: ROWS,
-  draw: ms => {
-    const g = grid(COLS, ROWS)
-    const m = pose.mode
-    if (m === 'flat') {
-      sprite(g, upside(BODY), OX, OY, ORANGE)
-      sprite(g, upside(EYES), OX, OY, ORANGE)
-      sprite(g, upside(second(ms, 600) ? LEGS_B : LEGS_A), OX, OY, ORANGE)
-      zzz(g, ms)
-    } else {
-      const X = OX + (pose.level >= 90 && m !== 'sleep' && second(ms, 200) ? 1 : 0)
-      const moving = m === 'tool' || m === 'responding'
-      const shut = m === 'sleep' || m === 'error'
-      let bx = 0
-      let by = 0
-      let shape = (cells: Cells) => cells
-      if (pose.celebrate) {
-        by = ms < 1500 ? (step(ms, 500, 3) > 0 ? -1 : 0) : second(ms - 1500, 1200) ? -1 : 0
-      } else if (moving) {
-        by = second(ms, 320) ? -1 : 0
-      } else if (m === 'thinking' || m === 'writing' || m === 'reading') {
-        by = second(ms, 2000) ? -1 : 0
-      } else if (m === 'compacting') {
-        if (second(ms, 600)) shape = trim
-      } else if (m === 'sleep') {
-        if (second(ms, 2400)) shape = trim
-      } else if (m === 'error') {
-        bx = second(ms, 1200) ? 1 : 0
-      } else if (m === 'aborted') {
-        if (ms >= 350 && ms < 1400) shape = fallen
+export const clawdAnim = (pose: Pose, helpers: boolean, chores: boolean, bare = false): Anim => {
+  const cols = bare ? BARE : COLS + (helpers || chores ? SIDE : 0)
+  return {
+    key: 'clawd',
+    sig: JSON.stringify([pose, helpers, chores, bare]),
+    columns: cols,
+    rows: ROWS,
+    draw: ms => {
+      const g = grid(cols, ROWS)
+      const m = pose.mode
+      if (m === 'flat') {
+        sprite(g, upside(BODY), OX, 1, ORANGE)
+        sprite(g, upside(EYES), OX, 1, ORANGE)
+        sprite(g, upside(second(ms, 600) ? LEGS_B : LEGS_A), OX, 1, ORANGE)
+        zzz(g, ms)
       } else {
-        by = second(ms, 1200) ? -1 : 0
+        const moving = m === 'tool' || m === 'responding'
+        const shut = m === 'sleep' || m === 'error'
+        const shake = pose.level >= 90 && m !== 'sleep' && second(ms, 200)
+        const sway = !pose.celebrate && m === 'error' && second(ms, 1200)
+        const X = OX + (shake ? 2 : 0)
+        const B = X + (sway ? 2 : 0)
+        let lift = false
+        let crouch = false
+        let shape = (cells: Cells) => cells
+        if (pose.celebrate) {
+          lift = ms < 1500 ? step(ms, 500, 3) > 0 : second(ms - 1500, 1200)
+        } else if (moving) {
+          lift = second(ms, 320)
+        } else if (m === 'thinking' || m === 'writing' || m === 'reading') {
+          lift = second(ms, 2000)
+        } else if (m === 'compacting') {
+          crouch = second(ms, 600)
+        } else if (m === 'sleep') {
+          crouch = second(ms, 2400)
+        } else if (m === 'aborted') {
+          if (ms >= 350 && ms < 1400) shape = fallen
+        } else if (m !== 'error') {
+          lift = second(ms, 1200)
+        }
+        const blink = !shut && ms % 4000 >= 3680 && ms % 4000 < 3840
+        const legs = shape(moving && second(ms, 320) ? LEGS_B : LEGS_A)
+        sprite(g, shape(BODY), B, 0, ORANGE)
+        sprite(g, shape(EYES), B, 0, shut || blink ? ORANGE : EYE)
+        if (!crouch) sprite(g, lift ? tall(legs) : legs, B, 0, ORANGE)
+        extras(g, m, ms, X)
+        if (pose.level >= 80 && m !== 'sleep') {
+          const k = step(ms, 1600, 4)
+          sprite(g, [[0, 0], [0, 1]], X - 1, k >= 2 ? 1 : 0, [BLUE, BLUE, 0x6f9fe0, 0xa9c6ee][k]!)
+        }
+        if (pose.celebrate) {
+          const spots: [number, number][] = [[0, 0], [9, 0], [0, 2], [9, 2]]
+          spots.forEach(([col, row], i) => {
+            const t = ms - i * 100
+            if (t < 0 || t >= 1600) return
+            const k = step(t, 800, 4)
+            if (k > 0) glyph(g, col, row, k === 2 ? '*' : '+', k === 2 ? AMBER : mix(AMBER, MUTED, 0.5))
+          })
+        }
       }
-      const blink = !shut && ms % 4000 >= 3680 && ms % 4000 < 3840
-      sprite(g, shape(BODY), X + bx, OY + by, ORANGE)
-      if (shut || blink) sprite(g, shape(EYES), X + bx, OY + by, ORANGE)
-      sprite(g, shape(moving && second(ms, 320) ? LEGS_B : LEGS_A), X + bx, OY + by, ORANGE)
-      extras(g, m, ms, X)
-      if (pose.level >= 80 && m !== 'sleep') {
-        const k = step(ms, 1600, 4)
-        sprite(g, [[0, 0], [0, 1]], X - 1, 1 + (k >= 2 ? 1 : 0), [BLUE, BLUE, 0x6f9fe0, 0xa9c6ee][k]!)
+      if (chores) {
+        glyph(g, COLS, 0, '▐', MUTED)
+        glyph(g, COLS + 1, 0, '>', GREEN, SCREEN)
+        glyph(g, COLS + 2, 0, '_', second(ms, 1000) ? mix(GREEN, SCREEN, 0.8) : GREEN, SCREEN)
+        glyph(g, COLS + 3, 0, '▌', MUTED)
       }
-      if (pose.celebrate) {
-        const spots: [number, number][] = [[0, 0], [10, 0], [0, 2], [10, 2]]
-        spots.forEach(([col, row], i) => {
-          const t = ms - i * 100
-          if (t < 0 || t >= 1600) return
-          const k = step(t, 800, 4)
-          if (k > 0) glyph(g, col, row, k === 2 ? '*' : '+', k === 2 ? AMBER : mix(AMBER, MUTED, 0.5))
-        })
+      if (helpers) {
+        sprite(g, MINI, 2 * COLS + 1, 4, ORANGE)
+        sprite(g, second(ms, 320) ? MINI_B : MINI_A, 2 * COLS + 1, 4, ORANGE)
       }
-    }
-    if (helpers) {
-      sprite(g, MINI, 20, 7, ORANGE)
-      sprite(g, second(ms, 320) ? MINI_B : MINI_A, 20, 7, ORANGE)
-    }
-    if (chores) {
-      glyph(g, 1, 4, '▐', MUTED)
-      glyph(g, 2, 4, '>', GREEN, SCREEN)
-      glyph(g, 3, 4, '_', second(ms, 1000) ? mix(GREEN, SCREEN, 0.8) : GREEN, SCREEN)
-      glyph(g, 4, 4, '▌', MUTED)
-    }
-    return pack(g)
-  },
-})
+      return pack(g)
+    },
+  }
+}
 
-export const barAnim = (key: string, p: number, delay: number): Anim => ({
+export const barAnim = (key: string, p: number, delay: number, n: number): Anim => ({
   key,
-  sig: `${p}`,
-  columns: 10,
+  sig: `${p}:${n}`,
+  columns: n,
   rows: 1,
   draw: ms => {
-    const g = grid(10, 1)
-    const filled = filledCells(p, 10)
+    const g = grid(n, 1)
+    const filled = filledCells(p, n)
     const color = LEVEL[level(p)]
     const sweep = ms - delay - 1500
     const phase = sweep >= 0 && filled >= 2 ? (sweep % 3500) / 3500 : 1
     const shine = phase < 0.4 ? Math.floor((phase / 0.4) * (filled - 1)) : -1
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < n; i++) {
       const on = i < filled && ms >= delay + i * 35
       const fading = on && i === filled - 1 && p >= 90 && second(ms - delay - i * 35, 1000)
       if (!on || fading) glyph(g, i, 0, '░', on ? color : MUTED)
@@ -264,3 +268,53 @@ export const twinkleAnim = (key: string): Anim => ({
     return pack(g)
   },
 })
+
+const cells = (s: string) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? 2 : 1), 0)
+
+export type Plan = { gap: number; bar: number; clawd: 'side' | 'full' | 'bare' | 'none'; groups: Stat[][] }
+
+const DROP_ORDER = (s: Stat) =>
+  s.label === '输出' ? 0 : s.label === '缓存' ? 1 : s.label === '上轮' ? 3 : s.label.endsWith('速度') ? 4 : s.label === '本会话' ? 6 : 7
+
+export const fitBand = (width: number, gauges: Gauge[], stats: Stat[], clawd: Plan['clawd']): Plan => {
+  const order = stats.map((_, i) => i).sort((a, b) => DROP_ORDER(stats[a]!) - DROP_ORDER(stats[b]!))
+  const plan = { gap: 2, bar: 10, clawd, dropped: 0 }
+  const layout = (): Plan => {
+    const gone = new Set(order.slice(0, plan.dropped))
+    const groups: Stat[][] = []
+    stats.forEach((st, i) => {
+      if (st.sep || groups.length === 0) groups.push([])
+      if (!gone.has(i)) groups.at(-1)!.push(st)
+    })
+    return { gap: plan.gap, bar: plan.bar, clawd: plan.clawd, groups: groups.filter(g => g.length > 0) }
+  }
+  const total = (p: Plan) => {
+    const widths = [
+      ...(p.clawd === 'none' ? [] : [p.clawd === 'side' ? COLS + SIDE : p.clawd === 'full' ? COLS : BARE]),
+      ...gauges.map(g => Math.max(cells(g.name), p.bar + 1 + cells(`${g.p}%`))),
+      ...p.groups.flatMap(g => [1, ...g.map(st => Math.max(cells(st.label), cells(st.value) + (st.sparkle ? 1 : 0)))]),
+    ]
+    return widths.reduce((a, b) => a + b, 0) + p.gap * Math.max(0, widths.length - 1)
+  }
+  const drop = (upTo: number) => () => {
+    while (plan.dropped < order.length && DROP_ORDER(stats[order[plan.dropped]!]!) <= upTo) plan.dropped++
+  }
+  const steps = [
+    () => (plan.gap = 1),
+    () => (plan.bar = 8),
+    () => (plan.bar = 6),
+    () => (plan.clawd = plan.clawd === 'side' ? 'full' : plan.clawd),
+    drop(1),
+    () => (plan.bar = 4),
+    drop(4),
+    () => (plan.clawd = plan.clawd === 'none' ? 'none' : 'bare'),
+    drop(6),
+    drop(7),
+    () => (plan.clawd = 'none'),
+  ]
+  for (const next of steps) {
+    if (total(layout()) <= width) break
+    next()
+  }
+  return layout()
+}
