@@ -184,9 +184,15 @@ export const clawdAnim = (pose: Pose, helpers: boolean, chores: boolean, bare = 
         const B = X + (sway ? 2 : 0)
         let lift = false
         let crouch = false
+        let sink = 0
         let shape = (cells: Cells) => cells
-        if (pose.celebrate) {
-          lift = ms < 1500 ? step(ms, 500, 3) > 0 : second(ms - 1500, 1200)
+        if (pose.celebrate && ms < 1500) {
+          const airborne = step(ms, 500, 3) > 0
+          lift = airborne
+          crouch = !airborne
+          sink = airborne ? 0 : 2
+        } else if (pose.celebrate) {
+          lift = second(ms - 1500, 1200)
         } else if (moving) {
           lift = second(ms, 320)
         } else if (m === 'thinking' || m === 'writing' || m === 'reading') {
@@ -202,8 +208,8 @@ export const clawdAnim = (pose: Pose, helpers: boolean, chores: boolean, bare = 
         }
         const blink = !shut && ms % 4000 >= 3680 && ms % 4000 < 3840
         const legs = shape(moving && second(ms, 320) ? LEGS_B : LEGS_A)
-        sprite(g, shape(BODY), B, 0, ORANGE)
-        sprite(g, shape(EYES), B, 0, shut || blink ? ORANGE : EYE)
+        sprite(g, shape(BODY), B, sink, ORANGE)
+        sprite(g, shape(EYES), B, sink, shut || blink ? ORANGE : EYE)
         if (!crouch) sprite(g, lift ? tall(legs) : legs, B, 0, ORANGE)
         extras(g, m, ms, X)
         if (pose.level >= 80 && m !== 'sleep') {
