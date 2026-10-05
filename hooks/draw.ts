@@ -94,7 +94,7 @@ const EYES: [number, number][] = [[5, 1], [12, 1]]
 const LEGS_A: [number, number][] = [[4, 4], [6, 4], [11, 4], [13, 4]]
 const LEGS_B: [number, number][] = [[5, 4], [7, 4], [10, 4], [12, 4]]
 
-export type Pose = { mode: Act | 'flat'; level: number; celebrate: boolean }
+type Pose = { mode: Act | 'flat'; level: number; celebrate: boolean }
 
 const flip = (cells: [number, number][]) => cells.map(([cx, cy]) => [cx, 4 - cy] as [number, number])
 
@@ -191,9 +191,9 @@ const helper = (x: number, y: number, u: number) => {
 const terminal = (x: number, y: number) =>
   `<rect x="${x}" y="${y}" width="14" height="8" fill="var(--muted)"/><rect x="${x + 1}" y="${y + 1}" width="12" height="6" fill="#1d1d1b"/><path d="M${x + 2} ${y + 2}h1v1h1v1h-1v1h-1z" fill="#0ca30c"/><rect class="bc" x="${x + 5}" y="${y + 4}" width="3" height="1" fill="#0ca30c"/>`
 
-export const level = (p: number) => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'good')
+const level = (p: number) => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'good')
 
-export const filledCells = (p: number, n: number) => (p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0)
+const filledCells = (p: number, n: number) => (p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0)
 
 const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: number, p: number, delay = 0) => {
   const filled = filledCells(p, n)
@@ -213,9 +213,9 @@ const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: nu
   return out.join('')
 }
 
-export type Gauge = { name: string; p: number }
+type Gauge = { name: string; p: number }
 
-export const gauges = (m: Meter): Gauge[] => {
+const gauges = (m: Meter): Gauge[] => {
   const list: Gauge[] = []
   if (m.context?.percent !== undefined) list.push({ name: 'ctx', p: m.context.percent })
   for (const l of m.rateLimits.slice(0, 2)) list.push({ name: limitName(l), p: l.percentUsed })
@@ -244,9 +244,9 @@ const twinkle = (x: number, y: number) =>
 
 export type Tone = 'good' | 'warn' | 'crit' | ''
 
-export type Stat = { label: string; value: string; tone: Tone; sep?: boolean; sparkle?: boolean }
+type Stat = { label: string; value: string; tone: Tone; sep?: boolean; sparkle?: boolean }
 
-export const stats = (m: Meter, last: TurnRecord | null, now: number): Stat[] => {
+const stats = (m: Meter, last: TurnRecord | null, now: number): Stat[] => {
   const list: Stat[] = []
   const empty = m.rateLimits.find(l => l.percentUsed >= 100)
   const p = pace(m, 'five_hour', now)
@@ -302,7 +302,7 @@ const value = (s: string, x: number, tone: Tone) => `<text x="${x}" y="${VALUE_Y
 
 const divider = () => svg(2, TILE_H, `<rect x="0" y="5" width="2" height="22" fill="var(--grid)"/>`, '|')
 
-export const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act): Pose => {
+const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act): Pose => {
   const empty = m.rateLimits.find(l => l.percentUsed >= 100)
   const busy = act === 'thinking' || act === 'tool' || act === 'writing' || act === 'reading' || act === 'delegating' || act === 'responding'
   const mode: Act = isWorking ? (act === 'idle' || act === 'sleep' ? 'thinking' : act) : busy ? 'idle' : act

@@ -1,6 +1,6 @@
 # clawd-hud
 
-Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一只会跟着状态做动作的像素 Clawd。
+Claude Code 桌面端的 mod：在 Code 页面的输入框上方显示一行像素风用量条，带一只会跟着状态做动作的像素 Clawd。
 
 ![用量条](docs/band.svg)
 
@@ -13,9 +13,7 @@ Claude Code 的 mod：在输入框上方显示一行像素风用量条，带一�
 
 只在本地读取 Claude Code 已有的用量数据，不额外消耗 token。
 
-桌面端的 Code 页面用 SVG 绘制。终端里的 Clawd 照着 Claude Code 启动画面那只画（3 行高），动作和桌面端一一对应；进度条也是一格一格带间隔的，空格子跟随终端主题变淡，逐格亮起、高光扫过、快满时闪烁都有。终端字符格比像素粗，细节会简化一些：身体始终对齐字符格，上下晃动改成腿伸缩，避免在 macOS 自带终端里出现横缝。
-
-终端里的横条始终只占一行。宽度不够时依次收紧：缩小间距、缩短进度条、隐藏子代理和后台命令的小图标、去掉输出和缓存、去掉上轮和速度、Clawd 只留身体、去掉本会话和额度预测，最后才隐藏 Clawd。
+只在桌面端的 Code 页面显示，用 SVG 绘制。终端里的 Claude Code 不显示横条，也不弹额度提醒。
 
 ## 安装
 
@@ -24,7 +22,7 @@ claude plugin marketplace add segfaultlab/clawd-hud
 claude plugin install clawd-hud@clawd-hud
 ```
 
-装好后新开一个会话就生效。
+装好后在桌面端新开一个会话就生效。
 
 ## 更新
 
@@ -47,7 +45,7 @@ claude plugin update clawd-hud@clawd-hud
 claude --plugin-dir /path/to/clawd-hud
 ```
 
-这时先在 `/plugin` 里停用已安装的 clawd-hud，否则会出现两条横条。终端会话会监视这个目录，保存后自动重新加载。
+这时先在 `/plugin` 里停用已安装的 clawd-hud，否则会出现两条横条。终端里不显示横条，改完用 `claude plugin test .` 跑测试，用下面的脚本看效果图。
 
 插件没有写版本号，每次提交到 GitHub 都算一个新版本。
 
@@ -61,7 +59,6 @@ node scripts/preview.ts
 
 - `hooks/register.tsx`：事件钩子，读取用量、跟踪状态
 - `hooks/draw.ts`：生成横条的 SVG（像素 Clawd、进度条、动画）
-- `hooks/term.ts`：终端版的每一帧，用方块字符画 Clawd、进度条和缓存命中的小星星
 - `types/index.d.ts`：mod 保存的状态类型
 - `scripts/preview.ts`：生成 `docs/` 下的效果图
-- `tests/band.test.tsx`：横条在终端和桌面端的渲染测试，用 `claude plugin test .` 运行
+- `tests/band.test.tsx`：桌面端能画出横条、终端不画的测试，用 `claude plugin test .` 运行

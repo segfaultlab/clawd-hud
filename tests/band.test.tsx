@@ -5,17 +5,7 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 100, scroll: { offset: 0, bodyRows: 6 }, view: {} },
 } as const
 
-test('the terminal band draws Clawd as a Raster', async ($, on) => {
-  mock.clock(on)
-  const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'terminal', ...BAND })
-  const clawd = await ui.find({ type: 'Raster', key: 'clawd' })
-  expect(clawd?.props.columns).toBe(14)
-  expect(clawd?.props.rows).toBe(3)
-  expect(String(clawd?.props.cells).length).toBe(672)
-  await ui.unmount()
-})
-
-test('the desktop band still draws Svg', async ($, on) => {
+test('the desktop band draws Svg', async ($, on) => {
   mock.clock(on)
   const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...BAND })
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
@@ -23,45 +13,14 @@ test('the desktop band still draws Svg', async ($, on) => {
   await ui.unmount()
 })
 
-test('a terminal Clawd keeps moving after it is drawn', async ($, on) => {
-  const clock = mock.clock(on)
-  const blits: { key: string; cells: string }[] = []
-  on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, percent: 34 }, rateLimits: [] } }))
-  on('agent.list', () => ({ value: [] }))
-  on('ui.blit', (_$, e) => {
-    if ('cells' in e) blits.push({ key: e.key, cells: e.cells })
-    return { value: {} }
-  })
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'terminal', requestId: 'band', ...BAND })
-  expect(await ui.find({ type: 'Text', text: /▌/ })).toBeDefined()
-  await clock.advance(1200)
-  expect(blits.some(b => b.key === 'clawd')).toBe(true)
-  await ui.unmount()
-})
-
-
-test('a narrow terminal keeps the band on one line by shrinking it', async ($, on) => {
+test('the terminal draws no band', async ($, on) => {
   mock.clock(on)
-  on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000, percent: 34 }, rateLimits: [] } }))
-  on('agent.list', () => ({ value: [] }))
-  on('ui.blit', () => ({ value: {} }))
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const at = (bodyColumns: number) => $.ui.mount({ plugin: 'clawd-hud', surface: 'terminal', ...BAND, props: { ...BAND.props, bodyColumns } })
-
-  const wide = await at(100)
-  expect(await wide.find({ type: 'Text', text: '上轮' })).toBeDefined()
-  expect((await wide.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(14)
-  await wide.unmount()
-
-  const narrow = await at(26)
-  expect(await narrow.find({ type: 'Text', text: '上轮' })).toBeUndefined()
-  expect((await narrow.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(14)
-  await narrow.unmount()
-
-  const tight = await at(19)
-  expect((await tight.find({ type: 'Raster', key: 'clawd' }))?.props.columns).toBe(10)
-  await tight.unmount()
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+  const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeUndefined()
+  await ui.unmount()
 })

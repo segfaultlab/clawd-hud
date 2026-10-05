@@ -2,9 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter } from '../types'
-import { bandParts, bandPose, gauges, limitName, stats } from './draw'
-import { barCells, barColor, clawdAnim, fitBand, TICK, twinkleAnim } from './term'
-import type { Anim, BarCell } from './term'
+import { bandParts, limitName } from './draw'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
   context: null,
@@ -69,7 +67,7 @@ async function setMeter($: EngineInterface, r: Reading) {
     }
     return { ...r, cost: g === gen ? newer(old.cost, r.cost) : old.cost, base }
   })
-  for (const l of r.rateLimits) warn($, l)
+  if ((await $.session.surfaces()).includes('desktop')) for (const l of r.rateLimits) warn($, l)
 }
 
 function warn($: EngineInterface, l: Limit) {
@@ -95,54 +93,6 @@ let shown: Act | null = null
 let queue: Promise<void> = Promise.resolve()
 let nap: { cancel: () => void } | null = null
 let recount: { cancel: () => void } | null = null
-let ticker: { cancel: () => void } | null = null
-let frame = 0
-type Bar = { key: string; p: number; n: number; delay: number }
-
-let mounted: { requestId: string; anims: Anim[]; bars: Bar[] } | null = null
-let barsShown = ''
-const starts = new Map<string, { sig: string; frame: number }>()
-const painted = new Map<string, string>()
-
-function since(key: string, sig: string) {
-  const s = starts.get(key)
-  const start = s && s.sig === sig ? s.frame : frame
-  starts.set(key, { sig, frame: start })
-  return start
-}
-
-const encode = (a: Anim, start: number) =>
-  (new Uint8Array(a.draw((frame - start) * TICK).buffer) as Uint8Array & { toBase64(): string }).toBase64()
-
-function paint(a: Anim) {
-  const cells = encode(a, since(a.key, a.sig))
-  painted.set(a.key, cells)
-  return cells
-}
-
-const barNow = (b: Bar) => barCells(b.p, b.n, b.delay, (frame - (starts.get(b.key)?.frame ?? frame)) * TICK)
-
-function animate($: EngineInterface) {
-  ticker?.cancel()
-  ticker = $.clock.every(TICK, () => {
-    frame++
-    const at = mounted
-    if (!at) return
-    const bars = JSON.stringify(at.bars.map(barNow))
-    if (bars !== barsShown) {
-      barsShown = bars
-      $.ui.invalidate('ui.render')
-    }
-    for (const a of at.anims) {
-      const cells = encode(a, starts.get(a.key)?.frame ?? frame)
-      if (cells === painted.get(a.key)) continue
-      painted.set(a.key, cells)
-      void $.ui.blit({ requestId: at.requestId, key: a.key, cells }).then(r => {
-        if (r.deny && mounted === at) mounted = null
-      })
-    }
-  })
-}
 
 const argsKey = (v: unknown) =>
   JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x))
@@ -213,7 +163,6 @@ export const register: Register = on => {
     const u = await $.session.usage()
     if (g === gen) await setMeter($, { context: u.context, rateLimits: u.rateLimits, cost: u.cost?.usd ?? null })
     await reset($)
-    animate($)
     return next(e)
   })
 
@@ -362,72 +311,12 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.surface !== 'desktop' || e.props.hasSurvey) return next(e)
     const m = await read($, meter)
     const t = await read($, last)
     const a = await read($, act)
     const crew = await read($, helpers)
     const shells = await read($, chores)
-
-    if (e.surface !== 'desktop') {
-      const { Box, Text } = $.ui.resolve(e)
-      const color = { good: 'green', warn: 'yellow', crit: 'red', '': undefined } as const
-      const now = await $.clock.now()
-      const Raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : null
-      const anims: Anim[] = []
-      const bars: Bar[] = []
-      const live = (a: Anim) => {
-        if (!Raster) return null
-        anims.push(a)
-        return <Raster key={a.key} columns={a.columns} rows={a.rows} cells={paint(a)} />
-      }
-      const gs = gauges(m)
-      const fit = fitBand(e.props.bodyColumns, gs, stats(m, t, now), Raster ? (crew > 0 || shells > 0 ? 'side' : 'full') : 'none')
-      const tree = (
-        <Box flexWrap="nowrap" justifyContent="space-between" alignItems="center" columnGap={fit.gap} width={e.props.bodyColumns}>
-          {fit.clawd === 'none'
-            ? null
-            : live(clawdAnim(bandPose(m, t, now, e.props.isWorking, a), fit.clawd === 'side' && crew > 0, fit.clawd === 'side' && shells > 0, fit.clawd === 'bare'))}
-          {gs.map((g, i) => {
-            const bar: Bar = { key: `bar-${g.name}`, p: g.p, n: fit.bar, delay: i * 120 }
-            since(bar.key, `${g.p}:${fit.bar}`)
-            bars.push(bar)
-            const runs: { cell: BarCell; count: number }[] = []
-            for (const cell of barNow(bar)) {
-              const last = runs.at(-1)
-              if (last?.cell === cell) last.count++
-              else runs.push({ cell, count: 1 })
-            }
-            return (
-              <Box flexDirection="column" flexShrink={0}>
-                <Text dimColor>{g.name}</Text>
-                <Box>
-                  {runs.map(r =>
-                    r.cell === 'track' ? <Text dimColor>{'▌'.repeat(r.count)}</Text> : <Text color={barColor(g.p, r.cell)}>{'▌'.repeat(r.count)}</Text>,
-                  )}
-                  <Text bold> {g.p}%</Text>
-                </Box>
-              </Box>
-            )
-          })}
-          {fit.groups.flatMap(group => [
-            <Text dimColor>{'│\n│'}</Text>,
-            ...group.map(s => (
-              <Box flexDirection="column" flexShrink={0}>
-                <Text dimColor>{s.label}</Text>
-                <Box>
-                  <Text bold color={color[s.tone]}>{s.value}</Text>
-                  {s.sparkle ? (live(twinkleAnim('sparkle')) ?? <Text color="yellow">✦</Text>) : null}
-                </Box>
-              </Box>
-            )),
-          ])}
-        </Box>
-      )
-      mounted = anims.length > 0 || bars.length > 0 ? { requestId: e.requestId, anims, bars } : null
-      barsShown = JSON.stringify(bars.map(barNow))
-      return tree
-    }
 
     const { Box, Svg } = $.ui.resolve(e)
     const parts = bandParts(m, t, await $.clock.now(), e.props.isWorking, a, crew, shells)
