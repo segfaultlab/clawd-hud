@@ -54,8 +54,24 @@ let gen = 0
 
 const newer = (old: number | null, cost: number | null) => (old != null && cost != null ? Math.max(old, cost) : cost)
 
+let compactWindow: { model: string; tokens: number } | null = null
+
+async function fitContext($: EngineInterface, c: Meter['context']): Promise<Meter['context']> {
+  if (!c) return c
+  const model = await $.session.model()
+  if (compactWindow?.model !== model) {
+    const raw = (await $.session.usage({ breakdown: 'summary' })).context.breakdown?.rawMaxTokens
+    if (!raw) return c
+    compactWindow = { model, tokens: raw }
+  }
+  const window = compactWindow.tokens
+  if (window >= c.window) return c
+  return { ...c, window, percent: c.tokens === undefined ? undefined : Math.min(100, Math.round((c.tokens / window) * 100)) }
+}
+
 async function setMeter($: EngineInterface, r: Reading) {
   const g = gen
+  r = { ...r, context: await fitContext($, r.context) }
   const now = await $.clock.now()
   await update($, meter, old => {
     const base = { ...old.base }
