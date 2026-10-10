@@ -54,19 +54,20 @@ let gen = 0
 
 const newer = (old: number | null, cost: number | null) => (old != null && cost != null ? Math.max(old, cost) : cost)
 
-let compactWindow: { model: string; tokens: number } | null = null
+let compactWindow: { model: string; tokens: number; auto: boolean } | null = null
 
 async function fitContext($: EngineInterface, c: Meter['context']): Promise<Meter['context']> {
   if (!c) return c
   const model = await $.session.model()
   if (compactWindow?.model !== model) {
-    const raw = (await $.session.usage({ breakdown: 'summary' })).context.breakdown?.rawMaxTokens
-    if (!raw) return c
-    compactWindow = { model, tokens: raw }
+    const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+    const tokens = b?.autoCompactThreshold ?? b?.rawMaxTokens
+    if (!tokens) return c
+    compactWindow = { model, tokens, auto: !!b?.isAutoCompactEnabled && b.autoCompactThreshold !== undefined }
   }
-  const window = compactWindow.tokens
-  if (window >= c.window) return c
-  return { ...c, window, percent: c.tokens === undefined ? undefined : Math.min(100, Math.round((c.tokens / window) * 100)) }
+  const { tokens: window, auto } = compactWindow
+  if (window >= c.window) return { ...c, autoCompact: auto }
+  return { ...c, window, autoCompact: auto, percent: c.tokens === undefined ? undefined : Math.min(100, Math.round((c.tokens / window) * 100)) }
 }
 
 async function setMeter($: EngineInterface, r: Reading) {

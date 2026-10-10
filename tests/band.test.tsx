@@ -25,18 +25,34 @@ test('the terminal draws no band', async ($, on) => {
   await ui.unmount()
 })
 
-test('ctx counts against the autocompact window', async ($, on) => {
+const ctxTile = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1], tokens: number, auto: boolean) => {
   mock.clock(on)
-  const context = { tokens: 225000, window: 1000000, percent: 23 }
+  const context = { tokens, window: 1000000, percent: Math.round(tokens / 10000) }
+  const breakdown = auto ? { rawMaxTokens: 480000, autoCompactThreshold: 450000, isAutoCompactEnabled: true } : { rawMaxTokens: 450000, isAutoCompactEnabled: false }
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
-  on('session.usage', async () => ({
-    value: { startedAt: 0, rateLimits: [], context: { ...context, breakdown: { rawMaxTokens: 450000 } as never } },
-  }))
+  on('session.usage', async () => ({ value: { startedAt: 0, rateLimits: [], context: { ...context, breakdown: breakdown as never } } }))
   on('session.surfaces', async () => ({ value: ['desktop'] }))
   on('session.measure', async ($, e) => ({ changed: e.changed }))
   await $.session.measure({ context, rateLimits: [], changed: ['context'] })
   const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...BAND })
-  const alts = (await ui.findAll({ type: 'Svg' })).map(s => JSON.stringify(s))
-  expect(alts.some(a => a.includes('ctx 50%'))).toBe(true)
+  const tile = (await ui.findAll({ type: 'Svg' })).map(s => JSON.stringify(s)).find(s => s.includes('ctx '))
   await ui.unmount()
+  return tile ?? ''
+}
+
+test('ctx counts against the autocompact threshold', async ($, on) => {
+  expect(await ctxTile($, on, 225000, true)).toContain('ctx 50%')
+})
+
+test('ctx stays green while autocompact is on', async ($, on) => {
+  const tile = await ctxTile($, on, 427500, true)
+  expect(tile).toContain('ctx 95%')
+  expect(tile).toContain('fill=\\"var(--good)\\"')
+  expect(tile).not.toContain('fill=\\"var(--crit)\\"')
+})
+
+test('ctx turns red when autocompact is off', async ($, on) => {
+  const tile = await ctxTile($, on, 427500, false)
+  expect(tile).toContain('ctx 95%')
+  expect(tile).toContain('fill=\\"var(--crit)\\"')
 })

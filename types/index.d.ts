@@ -14,7 +14,7 @@ export type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 export type Sample = { t: number; p: number; resetsAt?: string }
 
 export type Meter = {
-  context: { tokens?: number; window: number; percent?: number } | null
+  context: { tokens?: number; window: number; percent?: number; autoCompact?: boolean } | null
   rateLimits: Limit[]
   cost: number | null
   base: Record<string, Sample>

@@ -195,16 +195,17 @@ const level = (p: number) => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'good')
 
 const filledCells = (p: number, n: number) => (p > 0 ? Math.max(1, Math.round((Math.min(100, p) / 100) * n)) : 0)
 
-const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: number, p: number, delay = 0) => {
+const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: number, p: number, delay = 0, calm = false) => {
   const filled = filledCells(p, n)
-  const fill = `var(--${level(p)})`
+  const lv = calm ? 'good' : level(p)
+  const fill = `var(--${lv})`
   const out: string[] = []
   for (let i = 0; i < n; i++) {
     const rx = x + i * (cw + gap)
     out.push(`<rect x="${rx}" y="${y}" width="${cw}" height="${ch}" fill="var(--track)"/>`)
     if (i < filled) {
       const cell = `<rect class="pop" style="animation-delay:${delay + i * 35}ms" x="${rx}" y="${y}" width="${cw}" height="${ch}" fill="${fill}"/>`
-      out.push(i === filled - 1 && p >= 90 ? `<g class="bc">${cell}</g>` : cell)
+      out.push(i === filled - 1 && lv === 'crit' ? `<g class="bc">${cell}</g>` : cell)
     }
   }
   if (filled >= 2) {
@@ -213,11 +214,11 @@ const pixBar = (x: number, y: number, n: number, cw: number, ch: number, gap: nu
   return out.join('')
 }
 
-type Gauge = { name: string; p: number }
+type Gauge = { name: string; p: number; calm?: boolean }
 
 const gauges = (m: Meter): Gauge[] => {
   const list: Gauge[] = []
-  if (m.context?.percent !== undefined) list.push({ name: 'ctx', p: m.context.percent })
+  if (m.context?.percent !== undefined) list.push({ name: 'ctx', p: m.context.percent, calm: m.context.autoCompact })
   for (const l of m.rateLimits.slice(0, 2)) list.push({ name: limitName(l), p: l.percentUsed })
   return list
 }
@@ -310,7 +311,7 @@ const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boo
     ? { mode: 'flat', level: 100, celebrate: false }
     : {
         mode,
-        level: Math.max(0, ...gauges(m).map(g => g.p)),
+        level: Math.max(0, ...gauges(m).filter(g => !g.calm).map(g => g.p)),
         celebrate: mode === 'idle' && act === 'idle' && !!last && now - last.at < 15000,
       }
 }
@@ -321,7 +322,7 @@ export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWork
   const parts: Drawing[] = [svg(60, 40, clawd(4, 10, 2, pose) + (helpers > 0 ? helper(38, 30, 1) : '') + (chores > 0 ? terminal(6, 31) : ''), 'Clawd')]
   gs.forEach((g, i) => {
     const pct = `${g.p}%`
-    parts.push(svg(70 + textWidth('100%', 13), TILE_H, `${label(g.name)}${pixBar(0, 17, 10, 5, 10, 1.5, g.p, i * 120)}${value(pct, 70, '')}`, `${g.name} ${pct}`))
+    parts.push(svg(70 + textWidth('100%', 13), TILE_H, `${label(g.name)}${pixBar(0, 17, 10, 5, 10, 1.5, g.p, i * 120, g.calm)}${value(pct, 70, '')}`, `${g.name} ${pct}`))
   })
   for (const s of stats(m, last, now)) {
     if (s.sep) parts.push(divider())
