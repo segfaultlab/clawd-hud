@@ -279,6 +279,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    if ('agentId' in e && e.agentId) return next(e)
     nap?.cancel()
     inTurn = true
     stepActs = []

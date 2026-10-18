@@ -56,3 +56,24 @@ test('ctx turns red when autocompact is off', async ($, on) => {
   expect(tile).toContain('ctx 95%')
   expect(tile).toContain('fill=\\"var(--crit)\\"')
 })
+
+test('a subagent turn leaves Clawd as the main turn left it', async ($, on) => {
+  mock.clock(on)
+  on('agent.list', async () => ({ value: [] }))
+  on('turn.start', async ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', async ($, e) => ({ text: e.answer }))
+  const clawd = async () => {
+    const ui = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...BAND })
+    const s = JSON.stringify(await ui.find({ type: 'Svg' }))
+    await ui.unmount()
+    return s
+  }
+  const idle = await clawd()
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 10, isAborted: true, reason: 'aborted' })
+  const aborted = await clawd()
+  expect(aborted).not.toBe(idle)
+  const sub = { text: '', turnId: 't2', agentId: 'a1' }
+  await $.turn.start(sub)
+  expect(await clawd()).toBe(aborted)
+})
