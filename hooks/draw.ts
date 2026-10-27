@@ -16,7 +16,7 @@ const dur = (ms: number) => {
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${s % 60}s` : span(ms)
 }
 
-const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`)
+export const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`)
 
 const LIMIT_NAMES: Record<string, string> = {
   five_hour: '5h',
@@ -316,7 +316,26 @@ const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boo
       }
 }
 
-export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
+export const dailyBars = (days: { day: string; cost: number }[]): Drawing => {
+  const bw = days.length > 45 ? 4 : 8
+  const gap = 2
+  const top = 14
+  const h = 60
+  const max = Math.max(0, ...days.map(d => d.cost))
+  const bars = days
+    .map((d, i) => {
+      const bh = max > 0 ? Math.max(d.cost > 0 ? 1 : 0, Math.round((d.cost / max) * h)) : 0
+      return `<rect x="${i * (bw + gap)}" y="${top + h - bh}" width="${bw}" height="${bh}" fill="var(--s1)"/>`
+    })
+    .join('')
+  const w = Math.max(days.length * (bw + gap) - gap, 160)
+  const first = days[0]?.day.slice(5) ?? ''
+  const lastDay = days.at(-1)?.day.slice(5) ?? ''
+  const axis = `<text x="0" y="${top + h + 12}" font-size="10" class="mu">${esc(first)}</text><text x="${w}" y="${top + h + 12}" font-size="10" class="mu" text-anchor="end">${esc(lastDay)}</text>`
+  return svg(w, top + h + 14, `<text x="0" y="10" font-size="10" class="mu">${esc(`每日折算费用 · 最高 ${usd(max)}`)}</text>${bars}${axis}`, `每日折算费用，最高 ${usd(max)}`)
+}
+
+export const bandParts =(m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
   const gs = gauges(m)
   const pose = bandPose(m, last, now, isWorking, act)
   const parts: Drawing[] = [svg(60, 40, clawd(4, 10, 2, pose) + (helpers > 0 ? helper(38, 30, 1) : '') + (chores > 0 ? terminal(6, 31) : ''), 'Clawd')]

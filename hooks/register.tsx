@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Act, Limit, Meter } from '../types'
-import { bandParts, limitName } from './draw'
+import type { Act, Limit, Meter, Tally } from '../types'
+import { bandParts, dailyBars, fmt, limitName, usd } from './draw'
+import { SCAN, localDay, summarize, tallyScan, tokensOf } from './ledger'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
   context: null,
@@ -14,6 +15,45 @@ const last = atom({ plugin: 'clawd-hud', key: 'last' } as const, null)
 const act = atom({ plugin: 'clawd-hud', key: 'act' } as const, 'idle')
 const helpers = atom({ plugin: 'clawd-hud', key: 'helpers' } as const, 0)
 const chores = atom({ plugin: 'clawd-hud', key: 'chores' } as const, 0)
+const ledger = atom({ plugin: 'clawd-hud', key: 'ledger' } as const, { at: null, rows: [], loading: false })
+const range = atom({ plugin: 'clawd-hud', key: 'range' } as const, 'month')
+
+const PANE = 'usage'
+
+let scanning = false
+
+async function scan($: EngineInterface) {
+  if (scanning) return
+  scanning = true
+  await update($, ledger, l => ({ ...l, loading: true, error: undefined }))
+  try {
+    const root = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${await $.env.get('HOME')}/.claude`
+    let out = ''
+    for await (const c of $.process.spawn({ argv: ['sh', '-c', SCAN], cwd: `${root}/projects`, env: { LC_ALL: 'C' } })) {
+      if (c.stream === 'stdout') out += c.text
+    }
+    const rows = tallyScan(out)
+    const at = await $.clock.now()
+    await update($, ledger, () => ({ at, rows, loading: false }))
+  } catch {
+    await update($, ledger, l => ({ ...l, loading: false, error: '读取本地记录失败，需要系统自带的 sh 和 grep（macOS / Linux）' }))
+  } finally {
+    scanning = false
+  }
+}
+
+async function openUsage($: EngineInterface) {
+  await $.ui.open({ id: PANE, title: 'Token 用量' })
+  await scan($)
+}
+
+const usageRow = (name: string, t: Tally, cost: number | null) =>
+  `| ${name} | ${fmt(t.input)} | ${fmt(t.output)} | ${fmt(t.write5m + t.write1h)} | ${fmt(t.read)} | ${t.calls} | ${cost === null ? '—' : usd(cost)} |`
+
+const clockTime = (ms: number) => {
+  const d = new Date(ms)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 const SLEEP_AFTER = 60 * 60000
 
@@ -179,6 +219,7 @@ export const register: Register = on => {
     const g = gen
     const u = await $.session.usage()
     if (g === gen) await setMeter($, { context: u.context, rateLimits: u.rateLimits, cost: u.cost?.usd ?? null })
+    await update($, ledger, l => (l.loading && !scanning ? { ...l, loading: false } : l))
     await reset($)
     return next(e)
   })
@@ -336,13 +377,57 @@ export const register: Register = on => {
     const crew = await read($, helpers)
     const shells = await read($, chores)
 
-    const { Box, Svg } = $.ui.resolve(e)
+    const { Box, Svg, Button } = $.ui.resolve(e)
     const parts = bandParts(m, t, await $.clock.now(), e.props.isWorking, a, crew, shells)
     return (
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="space-between" width="100%">
         {parts.map(p => (
           <Svg source={p.source} width={p.width} height={p.height} alt={p.alt} />
         ))}
+        <Button key="usage" label="用量 ▸" onPress={() => void openUsage($)} />
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const el = $.ui.resolve(e)
+    const { Box, Text, Button, Markdown } = el
+    const l = await read($, ledger)
+    const r = await read($, range)
+    const now = await $.clock.now()
+    const s = summarize(l.rows, r === 'month' ? localDay(now - 29 * 86400000) : null, localDay(now))
+    const status = l.loading ? '统计中…' : (l.error ?? (l.at === null ? '' : `统计于 ${clockTime(l.at)}`))
+    const table = [
+      '| 模型 | 输入 | 输出 | 缓存写入 | 缓存读取 | 调用 | 折算费用 |',
+      '|---|--:|--:|--:|--:|--:|--:|',
+      ...s.models.map(x => usageRow(x.model.replace(/^claude-/, ''), x.tally, x.cost)),
+      usageRow('**合计**', s.total, s.cost),
+    ].join('\n')
+    const Svg = 'Svg' in el ? el.Svg : null
+    const bars = Svg && s.daily.length > 0 ? dailyBars(s.daily) : null
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box flexDirection="row" alignItems="center" gap={1}>
+          <Button key="month" label="近 30 天" variant={r === 'month' ? 'primary' : 'secondary'} onPress={() => void update($, range, () => 'month')} />
+          <Button key="all" label="全部" variant={r === 'all' ? 'primary' : 'secondary'} onPress={() => void update($, range, () => 'all')} />
+          <Button key="refresh" label="刷新" onPress={() => void scan($)} />
+          <Text dimColor>{status}</Text>
+        </Box>
+        {l.at === null ? (
+          <Text dimColor>{l.loading ? '正在读取本地会话记录…' : '还没有统计'}</Text>
+        ) : s.models.length === 0 ? (
+          <Text dimColor>这段时间没有用量记录</Text>
+        ) : (
+          <Box flexDirection="column" gap={1}>
+            <Text bold>
+              共 {fmt(tokensOf(s.total))} token · 折算 {usd(s.cost)}
+              {s.unpriced ? '（不含未知单价的模型）' : ''}
+            </Text>
+            <Markdown text={table} />
+            {Svg && bars && <Svg source={bars.source} width={bars.width} height={bars.height} alt={bars.alt} />}
+          </Box>
+        )}
+        <Text dimColor>按 Claude API 单价估算：缓存写入按输入价的 2 倍（1 小时缓存）或 1.25 倍（5 分钟缓存）计。订阅用户实际不按此计费。只统计本机 Claude Code 的会话记录，不调用模型、不消耗 token。</Text>
       </Box>
     )
   })
