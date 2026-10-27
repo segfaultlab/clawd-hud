@@ -324,12 +324,11 @@ const SERIES = [
 ] as const
 
 const CHART_STYLE = `<style>
-svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e4e3dc;--hov:rgba(11,11,11,.05);--c0:#2a78d6;--c1:#eb6834;--c2:#1baf7a;--c3:#eda100;
+svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e4e3dc;--c0:#2a78d6;--c1:#eb6834;--c2:#1baf7a;--c3:#eda100;
 font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
-@media (prefers-color-scheme:dark){svg{--ink:#f0efec;--ink2:#c3c2b7;--grid:#383835;--hov:rgba(255,255,255,.06);--c0:#3987e5;--c1:#d95926;--c2:#199e70;--c3:#c98500}}
-text{fill:var(--ink2);font-size:11px}.mu{fill:var(--muted)}.tt{fill:var(--ink);font-size:13px;font-weight:600}.pk{fill:var(--ink);font-weight:600}
-.tl{fill:var(--muted);font-size:12px}.tv{fill:var(--ink);font-size:24px;font-weight:600;font-variant-numeric:normal}
-.hit{fill:transparent}.col:hover .hit{fill:var(--hov)}
+@media (prefers-color-scheme:dark){svg{--ink:#f0efec;--ink2:#c3c2b7;--grid:#383835;--c0:#3987e5;--c1:#d95926;--c2:#199e70;--c3:#c98500}}
+text{fill:var(--ink2);font-size:14px}.mu{fill:var(--muted)}.tt{fill:var(--ink);font-size:17px;font-weight:600}.pk{fill:var(--ink);font-weight:600}
+.tl{fill:var(--muted);font-size:15px}.tv{fill:var(--ink);font-size:32px;font-weight:600;font-variant-numeric:normal}
 </style>`
 
 const niceStep = (max: number) => {
@@ -339,20 +338,20 @@ const niceStep = (max: number) => {
 }
 
 const topRounded = (x: number, yTop: number, w: number, yBottom: number) => {
-  const r = Math.min(4, w / 2, yBottom - yTop)
+  const r = Math.min(5, w / 2, yBottom - yTop)
   return `<path d="M${x} ${yBottom}V${yTop + r}Q${x} ${yTop} ${x + r} ${yTop}H${x + w - r}Q${x + w} ${yTop} ${x + w} ${yTop + r}V${yBottom}Z"`
 }
 
 export type ChartDay = { day: string; read: number; write: number; output: number; input: number; tokens: number; calls: number }
 
 export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing => {
-  const W = 720
-  const ML = 48
+  const W = 1000
+  const ML = 64
   const MR = 8
-  const TH = 76
-  const PT = TH + 40
-  const PH = 180
-  const H = PT + PH + 26
+  const TH = 104
+  const PT = TH + 56
+  const PH = 260
+  const H = PT + PH + 34
   const totals = days.map(d => d.read + d.write + d.output + d.input)
   const max = Math.max(0, ...totals)
   const step = max > 0 ? niceStep(max) : 1
@@ -361,25 +360,25 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
   const tick = (v: number) => (step >= 1 ? `$${Math.round(v)}` : `$${v.toFixed(step >= 0.1 ? 1 : 2)}`)
 
   const tw = W / Math.max(1, tiles.length)
-  const tileRow = tiles.map(([k, v], i) => `<text x="${i * tw}" y="14" class="tl">${esc(k)}</text><text x="${i * tw}" y="44" class="tv">${esc(v)}</text>`).join('')
-  const sep = `<line x1="0" x2="${W}" y1="${TH - 12}" y2="${TH - 12}" stroke="var(--grid)" stroke-width="1"/>`
+  const tileRow = tiles.map(([k, v], i) => `<text x="${i * tw}" y="18" class="tl">${esc(k)}</text><text x="${i * tw}" y="60" class="tv">${esc(v)}</text>`).join('')
+  const sep = `<line x1="0" x2="${W}" y1="${TH - 18}" y2="${TH - 18}" stroke="var(--grid)" stroke-width="1"/>`
 
-  let legendX = textWidth('每日折算费用', 13) + 24
+  let legendX = textWidth('每日折算费用', 17) + 32
   const legend = SERIES.map((s, i) => {
-    const out = `<rect x="${legendX}" y="${TH + 4}" width="8" height="8" rx="2" fill="var(--c${i})"/><text x="${legendX + 12}" y="${TH + 12}">${esc(s.name)}</text>`
-    legendX += 12 + textWidth(s.name, 11) + 16
+    const out = `<rect x="${legendX}" y="${TH + 5}" width="10" height="10" rx="2" fill="var(--c${i})"/><text x="${legendX + 16}" y="${TH + 15}">${esc(s.name)}</text>`
+    legendX += 16 + textWidth(s.name, 14) + 20
     return out
   }).join('')
-  const head = `${tileRow}${sep}<text x="0" y="${TH + 13}" class="tt">每日折算费用</text>${legend}`
+  const head = `${tileRow}${sep}<text x="0" y="${TH + 16}" class="tt">每日折算费用</text>${legend}`
 
   const grid: string[] = []
   for (let v = 0; v <= top + step / 2; v += step) {
-    grid.push(`<line x1="${ML}" x2="${W - MR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${ML - 8}" y="${y(v) + 4}" text-anchor="end" class="mu">${tick(v)}</text>`)
+    grid.push(`<line x1="${ML}" x2="${W - MR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${ML - 10}" y="${y(v) + 5}" text-anchor="end" class="mu">${tick(v)}</text>`)
   }
 
   const n = days.length
   const slot = (W - ML - MR) / Math.max(1, n)
-  const bw = Math.min(24, Math.max(1, slot * 0.72))
+  const bw = Math.min(32, Math.max(1, slot * 0.72))
   const peak = totals.indexOf(max)
   const cols = days.map((d, i) => {
     const x = ML + i * slot + (slot - bw) / 2
@@ -392,11 +391,7 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
       if (yb - yt < 0.5) return ''
       return j === visible.length - 1 ? `${topRounded(x, yt, bw, yb)} fill="var(--c${s.k})"/>` : `<rect x="${x}" y="${yt}" width="${bw}" height="${yb - yt}" fill="var(--c${s.k})"/>`
     })
-    const tip =
-      totals[i]! > 0
-        ? `${d.day} · ${usd(totals[i]!)}\n${SERIES.map(s => `${s.name} ${usd(d[s.key])}`).join(' · ')}\n${fmt(d.tokens)} token · ${d.calls} 次调用`
-        : `${d.day} · 无用量`
-    return `<g class="col"><rect class="hit" x="${ML + i * slot}" y="${PT}" width="${slot}" height="${PH}"/>${segs.join('')}<title>${esc(tip)}</title></g>`
+    return segs.join('')
   })
 
   const every = Math.ceil(n / 6)
@@ -405,12 +400,12 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
     .filter(({ i }) => i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2))
     .map(({ d, i }) => {
       const x = ML + (i + 0.5) * slot
-      const anchor = x + 18 > W ? `x="${W}" text-anchor="end"` : `x="${x}" text-anchor="middle"`
-      return `<text ${anchor} y="${PT + PH + 18}" class="mu">${esc(d.day.slice(5))}</text>`
+      const anchor = x + 24 > W ? `x="${W}" text-anchor="end"` : `x="${x}" text-anchor="middle"`
+      return `<text ${anchor} y="${PT + PH + 24}" class="mu">${esc(d.day.slice(5))}</text>`
     })
     .join('')
 
-  const peakLabel = max > 0 ? `<text x="${Math.min(W - MR - 24, Math.max(ML + 24, ML + (peak + 0.5) * slot))}" y="${y(max) - 6}" text-anchor="middle" class="pk">${usd(max)}</text>` : ''
+  const peakLabel = max > 0 ? `<text x="${Math.min(W - MR - 32, Math.max(ML + 32, ML + (peak + 0.5) * slot))}" y="${y(max) - 8}" text-anchor="middle" class="pk">${usd(max)}</text>` : ''
   const empty = max > 0 ? '' : `<text x="${(ML + W - MR) / 2}" y="${PT + PH / 2}" text-anchor="middle" class="mu">这段时间没有用量</text>`
 
   return {

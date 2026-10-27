@@ -76,7 +76,7 @@ test('the band button opens the pane and the pane shows the totals', async ($, o
   })
 
   const band = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...BAND })
-  await band.press({ key: 'usage' })
+  await band.press({ key: 'usage', link: { href: 'https://github.com/segfaultlab/clawd-hud' } })
   await band.unmount()
   expect(opened).toEqual(['usage'])
   expect(spawned[0]?.cwd).toBe('/home/me/.claude/projects')

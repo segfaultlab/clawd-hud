@@ -19,6 +19,7 @@ const ledger = atom({ plugin: 'clawd-hud', key: 'ledger' } as const, { at: null,
 const range = atom({ plugin: 'clawd-hud', key: 'range' } as const, 'month')
 
 const PANE = 'usage'
+const USAGE_LINK = 'https://github.com/segfaultlab/clawd-hud'
 
 let scanning = false
 
@@ -377,14 +378,14 @@ export const register: Register = on => {
     const crew = await read($, helpers)
     const shells = await read($, chores)
 
-    const { Box, Svg, Button } = $.ui.resolve(e)
+    const { Box, Svg, Markdown } = $.ui.resolve(e)
     const parts = bandParts(m, t, await $.clock.now(), e.props.isWorking, a, crew, shells)
     return (
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="space-between" width="100%">
         {parts.map(p => (
           <Svg source={p.source} width={p.width} height={p.height} alt={p.alt} />
         ))}
-        <Button key="usage" label="▸" dimColor onPress={() => void openUsage($)} />
+        <Markdown key="usage" text={`[▸](${USAGE_LINK})`} pressableLinks={[USAGE_LINK]} onLinkPress={() => void openUsage($)} />
       </Box>
     )
   })
@@ -427,7 +428,7 @@ export const register: Register = on => {
           <Text dimColor>这段时间没有用量记录</Text>
         ) : (
           <Box flexDirection="column" gap={1}>
-            {Svg ? <Svg source={chart.source} alt={chart.alt} isInteractive /> : <Text bold>{tiles.map(([k, v]) => `${k} ${v}`).join(' · ')}</Text>}
+            {Svg ? <Svg source={chart.source} alt={chart.alt} /> : <Text bold>{tiles.map(([k, v]) => `${k} ${v}`).join(' · ')}</Text>}
             <Markdown text={table} />
             {s.unpriced && <Text dimColor>单价表里没有的模型只算 token，不计入费用。</Text>}
           </Box>
