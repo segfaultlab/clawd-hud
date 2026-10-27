@@ -1,7 +1,7 @@
 import type { Act, Limit, Meter, TurnRecord } from '../types'
 
 export const fmt = (n: number) =>
-  n < 1000 ? `${n}` : n < 1e6 ? `${(n / 1000).toFixed(1)}k` : `${(n / 1e6).toFixed(2)}M`
+  n < 1000 ? `${n}` : n < 1e6 ? `${(n / 1000).toFixed(1)}k` : n < 1e9 ? `${(n / 1e6).toFixed(2)}M` : `${(n / 1e9).toFixed(2)}B`
 
 const span = (ms: number) => {
   const mins = Math.max(0, Math.round(ms / 60000))
@@ -316,26 +316,112 @@ const bandPose = (m: Meter, last: TurnRecord | null, now: number, isWorking: boo
       }
 }
 
-export const dailyBars = (days: { day: string; cost: number }[]): Drawing => {
-  const bw = days.length > 45 ? 4 : 8
-  const gap = 2
-  const top = 14
-  const h = 60
-  const max = Math.max(0, ...days.map(d => d.cost))
-  const bars = days
-    .map((d, i) => {
-      const bh = max > 0 ? Math.max(d.cost > 0 ? 1 : 0, Math.round((d.cost / max) * h)) : 0
-      return `<rect x="${i * (bw + gap)}" y="${top + h - bh}" width="${bw}" height="${bh}" fill="var(--s1)"/>`
-    })
-    .join('')
-  const w = Math.max(days.length * (bw + gap) - gap, 160)
-  const first = days[0]?.day.slice(5) ?? ''
-  const lastDay = days.at(-1)?.day.slice(5) ?? ''
-  const axis = `<text x="0" y="${top + h + 12}" font-size="10" class="mu">${esc(first)}</text><text x="${w}" y="${top + h + 12}" font-size="10" class="mu" text-anchor="end">${esc(lastDay)}</text>`
-  return svg(w, top + h + 14, `<text x="0" y="10" font-size="10" class="mu">${esc(`每日折算费用 · 最高 ${usd(max)}`)}</text>${bars}${axis}`, `每日折算费用，最高 ${usd(max)}`)
+const SERIES = [
+  { key: 'read', name: '缓存读取' },
+  { key: 'write', name: '缓存写入' },
+  { key: 'output', name: '输出' },
+  { key: 'input', name: '输入' },
+] as const
+
+const CHART_STYLE = `<style>
+svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e4e3dc;--hov:rgba(11,11,11,.05);--c0:#2a78d6;--c1:#eb6834;--c2:#1baf7a;--c3:#eda100;
+font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+@media (prefers-color-scheme:dark){svg{--ink:#f0efec;--ink2:#c3c2b7;--grid:#383835;--hov:rgba(255,255,255,.06);--c0:#3987e5;--c1:#d95926;--c2:#199e70;--c3:#c98500}}
+text{fill:var(--ink2);font-size:11px}.mu{fill:var(--muted)}.tt{fill:var(--ink);font-size:13px;font-weight:600}.pk{fill:var(--ink);font-weight:600}
+.tl{fill:var(--muted);font-size:12px}.tv{fill:var(--ink);font-size:24px;font-weight:600;font-variant-numeric:normal}
+.hit{fill:transparent}.col:hover .hit{fill:var(--hov)}
+</style>`
+
+const niceStep = (max: number) => {
+  const raw = max / 4
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  return ([1, 2, 5, 10].find(m => m * mag >= raw) ?? 10) * mag
 }
 
-export const bandParts =(m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
+const topRounded = (x: number, yTop: number, w: number, yBottom: number) => {
+  const r = Math.min(4, w / 2, yBottom - yTop)
+  return `<path d="M${x} ${yBottom}V${yTop + r}Q${x} ${yTop} ${x + r} ${yTop}H${x + w - r}Q${x + w} ${yTop} ${x + w} ${yTop + r}V${yBottom}Z"`
+}
+
+export type ChartDay = { day: string; read: number; write: number; output: number; input: number; tokens: number; calls: number }
+
+export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing => {
+  const W = 720
+  const ML = 48
+  const MR = 8
+  const TH = 76
+  const PT = TH + 40
+  const PH = 180
+  const H = PT + PH + 26
+  const totals = days.map(d => d.read + d.write + d.output + d.input)
+  const max = Math.max(0, ...totals)
+  const step = max > 0 ? niceStep(max) : 1
+  const top = max > 0 ? Math.ceil(max / step) * step : 4
+  const y = (v: number) => PT + PH - (v / top) * PH
+  const tick = (v: number) => (step >= 1 ? `$${Math.round(v)}` : `$${v.toFixed(step >= 0.1 ? 1 : 2)}`)
+
+  const tw = W / Math.max(1, tiles.length)
+  const tileRow = tiles.map(([k, v], i) => `<text x="${i * tw}" y="14" class="tl">${esc(k)}</text><text x="${i * tw}" y="44" class="tv">${esc(v)}</text>`).join('')
+  const sep = `<line x1="0" x2="${W}" y1="${TH - 12}" y2="${TH - 12}" stroke="var(--grid)" stroke-width="1"/>`
+
+  let legendX = textWidth('每日折算费用', 13) + 24
+  const legend = SERIES.map((s, i) => {
+    const out = `<rect x="${legendX}" y="${TH + 4}" width="8" height="8" rx="2" fill="var(--c${i})"/><text x="${legendX + 12}" y="${TH + 12}">${esc(s.name)}</text>`
+    legendX += 12 + textWidth(s.name, 11) + 16
+    return out
+  }).join('')
+  const head = `${tileRow}${sep}<text x="0" y="${TH + 13}" class="tt">每日折算费用</text>${legend}`
+
+  const grid: string[] = []
+  for (let v = 0; v <= top + step / 2; v += step) {
+    grid.push(`<line x1="${ML}" x2="${W - MR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${ML - 8}" y="${y(v) + 4}" text-anchor="end" class="mu">${tick(v)}</text>`)
+  }
+
+  const n = days.length
+  const slot = (W - ML - MR) / Math.max(1, n)
+  const bw = Math.min(24, Math.max(1, slot * 0.72))
+  const peak = totals.indexOf(max)
+  const cols = days.map((d, i) => {
+    const x = ML + i * slot + (slot - bw) / 2
+    const visible = SERIES.map((s, k) => ({ k, v: d[s.key] })).filter(s => (s.v / top) * PH >= 1)
+    let base = 0
+    const segs = visible.map((s, j) => {
+      const yb = y(base) - (j > 0 ? 2 : 0)
+      base += s.v
+      const yt = y(base)
+      if (yb - yt < 0.5) return ''
+      return j === visible.length - 1 ? `${topRounded(x, yt, bw, yb)} fill="var(--c${s.k})"/>` : `<rect x="${x}" y="${yt}" width="${bw}" height="${yb - yt}" fill="var(--c${s.k})"/>`
+    })
+    const tip =
+      totals[i]! > 0
+        ? `${d.day} · ${usd(totals[i]!)}\n${SERIES.map(s => `${s.name} ${usd(d[s.key])}`).join(' · ')}\n${fmt(d.tokens)} token · ${d.calls} 次调用`
+        : `${d.day} · 无用量`
+    return `<g class="col"><rect class="hit" x="${ML + i * slot}" y="${PT}" width="${slot}" height="${PH}"/>${segs.join('')}<title>${esc(tip)}</title></g>`
+  })
+
+  const every = Math.ceil(n / 6)
+  const labels = days
+    .map((d, i) => ({ d, i }))
+    .filter(({ i }) => i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2))
+    .map(({ d, i }) => {
+      const x = ML + (i + 0.5) * slot
+      const anchor = x + 18 > W ? `x="${W}" text-anchor="end"` : `x="${x}" text-anchor="middle"`
+      return `<text ${anchor} y="${PT + PH + 18}" class="mu">${esc(d.day.slice(5))}</text>`
+    })
+    .join('')
+
+  const peakLabel = max > 0 ? `<text x="${Math.min(W - MR - 24, Math.max(ML + 24, ML + (peak + 0.5) * slot))}" y="${y(max) - 6}" text-anchor="middle" class="pk">${usd(max)}</text>` : ''
+  const empty = max > 0 ? '' : `<text x="${(ML + W - MR) / 2}" y="${PT + PH / 2}" text-anchor="middle" class="mu">这段时间没有用量</text>`
+
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${CHART_STYLE}${head}${grid.join('')}${cols.join('')}${peakLabel}${labels}${empty}</svg>`,
+    width: W,
+    height: H,
+    alt: `${tiles.map(([k, v]) => `${k} ${v}`).join('，')}。每日折算费用，${days[0]?.day ?? ''} 到 ${days.at(-1)?.day ?? ''}，单日最高 ${usd(max)}`,
+  }
+}
+
+export const bandParts = (m: Meter, last: TurnRecord | null, now: number, isWorking: boolean, act: Act, helpers: number, chores: number): Drawing[] => {
   const gs = gauges(m)
   const pose = bandPose(m, last, now, isWorking, act)
   const parts: Drawing[] = [svg(60, 40, clawd(4, 10, 2, pose) + (helpers > 0 ? helper(38, 30, 1) : '') + (chores > 0 ? terminal(6, 31) : ''), 'Clawd')]

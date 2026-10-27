@@ -17,11 +17,18 @@ const PRICES: Record<string, [number, number, number]> = {
   'claude-haiku-4-5': [1, 5, 0.1],
 }
 
-export const priceOf = (model: string, t: Tally): number | null => {
+export type CostParts = { read: number; write: number; output: number; input: number }
+
+const partsOf = (model: string, t: Tally): CostParts | null => {
   const p = PRICES[model]
   if (!p) return null
   const [i, o, r] = p
-  return (t.input * i + t.output * o + t.write5m * i * 1.25 + t.write1h * i * 2 + t.read * r) / 1e6
+  return { read: (t.read * r) / 1e6, write: ((t.write5m * 1.25 + t.write1h * 2) * i) / 1e6, output: (t.output * o) / 1e6, input: (t.input * i) / 1e6 }
+}
+
+export const priceOf = (model: string, t: Tally): number | null => {
+  const c = partsOf(model, t)
+  return c && c.read + c.write + c.output + c.input
 }
 
 export const emptyTally = (): Tally => ({ input: 0, output: 0, write5m: 0, write1h: 0, read: 0, calls: 0 })
@@ -99,29 +106,37 @@ export const tallyScan = (text: string): DayTally[] => {
 
 export type ModelLine = { model: string; tally: Tally; cost: number | null }
 
-export type Summary = { models: ModelLine[]; total: Tally; cost: number; unpriced: boolean; daily: { day: string; cost: number; tokens: number }[] }
+export type DayCost = CostParts & { day: string; tokens: number; calls: number }
+
+export type Summary = { models: ModelLine[]; total: Tally; cost: number; unpriced: boolean; daily: DayCost[] }
 
 export const summarize = (rows: DayTally[], from: string | null, today: string): Summary => {
   const picked = rows.filter(r => (from === null || r.day >= from) && r.day <= today)
   const models = new Map<string, Tally>()
-  const days = new Map<string, { cost: number; tokens: number }>()
+  const days = new Map<string, DayCost>()
   for (const r of picked) {
     const t = models.get(r.model) ?? emptyTally()
     addTally(t, r)
     models.set(r.model, t)
-    const d = days.get(r.day) ?? { cost: 0, tokens: 0 }
-    d.cost += priceOf(r.model, r) ?? 0
+    const d = days.get(r.day) ?? { day: r.day, read: 0, write: 0, output: 0, input: 0, tokens: 0, calls: 0 }
+    const c = partsOf(r.model, r)
+    if (c) {
+      d.read += c.read
+      d.write += c.write
+      d.output += c.output
+      d.input += c.input
+    }
     d.tokens += tokensOf(r)
+    d.calls += r.calls
     days.set(r.day, d)
   }
   const lines = [...models].map(([model, tally]) => ({ model, tally, cost: priceOf(model, tally) })).sort((a, b) => tokensOf(b.tally) - tokensOf(a.tally))
   const total = emptyTally()
   for (const l of lines) addTally(total, l.tally)
-  const start = from ?? picked[0]?.day ?? today
-  const daily: Summary['daily'] = []
-  for (let ms = Date.parse(`${start}T12:00:00`); localDay(ms) <= today; ms += 86400000) {
+  const daily: DayCost[] = []
+  for (let ms = Date.parse(`${from ?? picked[0]?.day ?? today}T12:00:00`); localDay(ms) <= today; ms += 86400000) {
     const day = localDay(ms)
-    daily.push({ day, ...(days.get(day) ?? { cost: 0, tokens: 0 }) })
+    daily.push(days.get(day) ?? { day, read: 0, write: 0, output: 0, input: 0, tokens: 0, calls: 0 })
   }
   return { models: lines, total, cost: lines.reduce((s, l) => s + (l.cost ?? 0), 0), unpriced: lines.some(l => l.cost === null), daily }
 }

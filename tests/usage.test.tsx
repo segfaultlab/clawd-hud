@@ -52,8 +52,9 @@ test('30 days leaves out older days, all keeps them', () => {
   const today = localDay(NOW)
   const month = summarize(rows, localDay(NOW - 29 * 86400000), today)
   expect(month.models.map(m => m.model).sort()).toEqual(['claude-mystery-1', 'claude-opus-5-5'])
-  expect(month.daily).toHaveLength(30)
   expect(month.unpriced).toBe(true)
+  expect(month.daily).toHaveLength(30)
+  expect(month.daily.at(-1)).toMatchObject({ day: today, calls: 1 })
   const all = summarize(rows, null, today)
   expect(all.models).toHaveLength(3)
   expect(all.daily).toHaveLength(41)
@@ -82,9 +83,9 @@ test('the band button opens the pane and the pane shows the totals', async ($, o
 
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ plugin: 'clawd-hud', surface, ...PANE })
-    expect((await ui.find({ type: 'Text', text: /共 .* token/ }))?.text).toContain('折算')
+    if (surface === 'desktop') expect((await ui.find({ type: 'Svg' }))?.props).toMatchObject({ alt: expect.stringContaining('折算费用 $') })
+    else expect((await ui.find({ type: 'Text', text: /折算费用/ }))?.text).toContain('总 token')
     expect(JSON.stringify(await ui.find({ type: 'Markdown' }))).toContain('opus-5-5')
-    expect(await ui.find({ type: 'Svg' })).toEqual(surface === 'desktop' ? expect.anything() : undefined)
     await ui.press({ key: 'all' })
     expect(JSON.stringify(await ui.find({ type: 'Markdown' }))).toContain('sonnet-5-5')
     await ui.press({ key: 'month' })

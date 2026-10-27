@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Act, Limit, Meter, Tally } from '../types'
-import { bandParts, dailyBars, fmt, limitName, usd } from './draw'
+import { bandParts, fmt, limitName, usageChart, usd } from './draw'
 import { SCAN, localDay, summarize, tallyScan, tokensOf } from './ledger'
 
 const meter = atom({ plugin: 'clawd-hud', key: 'meter' } as const, {
@@ -384,7 +384,7 @@ export const register: Register = on => {
         {parts.map(p => (
           <Svg source={p.source} width={p.width} height={p.height} alt={p.alt} />
         ))}
-        <Button key="usage" label="用量 ▸" onPress={() => void openUsage($)} />
+        <Button key="usage" label="▸" dimColor onPress={() => void openUsage($)} />
       </Box>
     )
   })
@@ -392,6 +392,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const el = $.ui.resolve(e)
     const { Box, Text, Button, Markdown } = el
+    const Svg = e.surface !== 'terminal' && 'Svg' in el ? el.Svg : null
     const l = await read($, ledger)
     const r = await read($, range)
     const now = await $.clock.now()
@@ -403,8 +404,15 @@ export const register: Register = on => {
       ...s.models.map(x => usageRow(x.model.replace(/^claude-/, ''), x.tally, x.cost)),
       usageRow('**合计**', s.total, s.cost),
     ].join('\n')
-    const Svg = 'Svg' in el ? el.Svg : null
-    const bars = Svg && s.daily.length > 0 ? dailyBars(s.daily) : null
+    const cacheIn = s.total.read + s.total.write5m + s.total.write1h + s.total.input
+    const tiles: [string, string][] = [
+      ['折算费用', usd(s.cost)],
+      ['日均', usd(s.cost / Math.max(1, s.daily.length))],
+      ['总 token', fmt(tokensOf(s.total))],
+      ['调用次数', `${s.total.calls}`],
+      ['缓存命中', `${cacheIn > 0 ? Math.round((s.total.read / cacheIn) * 100) : 0}%`],
+    ]
+    const chart = usageChart(s.daily, tiles)
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" alignItems="center" gap={1}>
@@ -419,12 +427,9 @@ export const register: Register = on => {
           <Text dimColor>这段时间没有用量记录</Text>
         ) : (
           <Box flexDirection="column" gap={1}>
-            <Text bold>
-              共 {fmt(tokensOf(s.total))} token · 折算 {usd(s.cost)}
-              {s.unpriced ? '（不含未知单价的模型）' : ''}
-            </Text>
+            {Svg ? <Svg source={chart.source} alt={chart.alt} isInteractive /> : <Text bold>{tiles.map(([k, v]) => `${k} ${v}`).join(' · ')}</Text>}
             <Markdown text={table} />
-            {Svg && bars && <Svg source={bars.source} width={bars.width} height={bars.height} alt={bars.alt} />}
+            {s.unpriced && <Text dimColor>单价表里没有的模型只算 token，不计入费用。</Text>}
           </Box>
         )}
         <Text dimColor>按 Claude API 单价估算：缓存写入按输入价的 2 倍（1 小时缓存）或 1.25 倍（5 分钟缓存）计。订阅用户实际不按此计费。只统计本机 Claude Code 的会话记录，不调用模型、不消耗 token。</Text>
