@@ -92,3 +92,36 @@ test('the band button opens the pane and the pane shows the totals', async ($, o
     await ui.unmount()
   }
 })
+
+test('the pane rescans only once the scan is a day old, or on refresh', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, { HOME: '/home/me' })
+  mock.store(on)
+  let scans = 0
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.spawn', async function* () {
+    scans++
+    yield { stream: 'stdout' as const, text: SAMPLE }
+    return { value: { code: 0, signal: null } }
+  })
+  const open = async () => {
+    const band = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...BAND })
+    await band.press({ key: 'usage', link: { href: 'https://github.com/segfaultlab/clawd-hud' } })
+    await band.unmount()
+  }
+
+  await open()
+  await open()
+  expect(scans).toBe(1)
+  await clock.advance(23 * 3600000)
+  await open()
+  expect(scans).toBe(1)
+  await clock.advance(3600000)
+  await open()
+  expect(scans).toBe(2)
+
+  const pane = await $.ui.mount({ plugin: 'clawd-hud', surface: 'desktop', ...PANE })
+  await pane.press({ key: 'refresh' })
+  await pane.unmount()
+  expect(scans).toBe(3)
+})

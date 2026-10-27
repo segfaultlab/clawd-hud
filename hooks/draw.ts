@@ -324,12 +324,18 @@ const SERIES = [
 ] as const
 
 const CHART_STYLE = `<style>
-svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e4e3dc;--c0:#2a78d6;--c1:#eb6834;--c2:#1baf7a;--c3:#eda100;
+svg{--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e4e3dc;--hov:rgba(11,11,11,.05);--tip:#fff;--tipb:#d6d5ce;--c0:#2a78d6;--c1:#eb6834;--c2:#1baf7a;--c3:#eda100;
 font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
-@media (prefers-color-scheme:dark){svg{--ink:#f0efec;--ink2:#c3c2b7;--grid:#383835;--c0:#3987e5;--c1:#d95926;--c2:#199e70;--c3:#c98500}}
+@media (prefers-color-scheme:dark){svg{--ink:#f0efec;--ink2:#c3c2b7;--grid:#383835;--hov:rgba(255,255,255,.06);--tip:#2b2b29;--tipb:#454541;--c0:#3987e5;--c1:#d95926;--c2:#199e70;--c3:#c98500}}
 text{fill:var(--ink2);font-size:14px}.mu{fill:var(--muted)}.tt{fill:var(--ink);font-size:17px;font-weight:600}.pk{fill:var(--ink);font-weight:600}
 .tl{fill:var(--muted);font-size:15px}.tv{fill:var(--ink);font-size:32px;font-weight:600;font-variant-numeric:normal}
+.hit{fill:transparent}.col:hover .hit{fill:var(--hov)}.tip{visibility:hidden;pointer-events:none}.tip rect.bg{fill:var(--tip);stroke:var(--tipb)}
+.avg{stroke:var(--ink2);stroke-width:1;opacity:.6}
 </style>`
+
+const r1 = (n: number) => Math.round(n * 10) / 10
+
+const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 const niceStep = (max: number) => {
   const raw = max / 4
@@ -347,7 +353,7 @@ export type ChartDay = { day: string; read: number; write: number; output: numbe
 export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing => {
   const W = 1000
   const ML = 64
-  const MR = 8
+  const MR = 72
   const TH = 104
   const PT = TH + 56
   const PH = 260
@@ -356,7 +362,7 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
   const max = Math.max(0, ...totals)
   const step = max > 0 ? niceStep(max) : 1
   const top = max > 0 ? Math.ceil(max / step) * step : 4
-  const y = (v: number) => PT + PH - (v / top) * PH
+  const y = (v: number) => r1(PT + PH - (v / top) * PH)
   const tick = (v: number) => (step >= 1 ? `$${Math.round(v)}` : `$${v.toFixed(step >= 0.1 ? 1 : 2)}`)
 
   const tw = W / Math.max(1, tiles.length)
@@ -378,10 +384,10 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
 
   const n = days.length
   const slot = (W - ML - MR) / Math.max(1, n)
-  const bw = Math.min(32, Math.max(1, slot * 0.72))
+  const bw = r1(Math.min(32, Math.max(1, slot * 0.72)))
   const peak = totals.indexOf(max)
   const cols = days.map((d, i) => {
-    const x = ML + i * slot + (slot - bw) / 2
+    const x = r1(ML + i * slot + (slot - bw) / 2)
     const visible = SERIES.map((s, k) => ({ k, v: d[s.key] })).filter(s => (s.v / top) * PH >= 1)
     let base = 0
     const segs = visible.map((s, j) => {
@@ -389,27 +395,44 @@ export const usageChart = (days: ChartDay[], tiles: [string, string][]): Drawing
       base += s.v
       const yt = y(base)
       if (yb - yt < 0.5) return ''
-      return j === visible.length - 1 ? `${topRounded(x, yt, bw, yb)} fill="var(--c${s.k})"/>` : `<rect x="${x}" y="${yt}" width="${bw}" height="${yb - yt}" fill="var(--c${s.k})"/>`
+      return j === visible.length - 1 ? `${topRounded(x, yt, bw, yb)} fill="var(--c${s.k})"/>` : `<rect x="${x}" y="${yt}" width="${bw}" height="${r1(yb - yt)}" fill="var(--c${s.k})"/>`
     })
-    return segs.join('')
+    return `<g class="col c${i}"><rect class="hit" x="${r1(ML + i * slot)}" y="${PT}" width="${r1(slot)}" height="${PH}"/>${segs.join('')}</g>`
   })
+
+  const TW = 270
+  const TH2 = 150
+  const tips = days.map((d, i) => {
+    if (!(totals[i]! > 0)) return ''
+    const cx = r1(ML + (i + 0.5) * slot)
+    const tx = cx + 12 + TW > W ? cx - 12 - TW : cx + 12
+    const ty = PT + 4
+    const head = `${usd(totals[i]!)} · ${fmt(d.tokens)} token · ${d.calls} 次`
+    const lines = SERIES.map((s, k) => `<rect x="${tx + 14}" y="${ty + 66 + k * 20}" width="10" height="10" rx="2" fill="var(--c${k})"/><text x="${tx + 30}" y="${ty + 75 + k * 20}">${esc(s.name)}</text><text x="${tx + TW - 14}" y="${ty + 75 + k * 20}" text-anchor="end" class="pk">${esc(usd(d[s.key]))}</text>`).join('')
+    return `<g class="tip t${i}"><rect class="bg" x="${tx}" y="${ty}" width="${TW}" height="${TH2}" rx="8"/><text x="${tx + 14}" y="${ty + 24}" class="pk">${esc(`${d.day} ${WEEK[new Date(`${d.day}T12:00:00`).getDay()]}`)}</text><text x="${tx + 14}" y="${ty + 46}">${esc(head)}</text>${lines}</g>`
+  })
+  const tipRules = days.flatMap((_, i) => (totals[i]! > 0 ? [`.c${i}:hover~.t${i}`] : [])).join(',')
+  const tipStyle = tipRules ? `<style>${tipRules}{visibility:visible}</style>` : ''
+
+  const avg = totals.length > 0 ? totals.reduce((a, b) => a + b, 0) / totals.length : 0
+  const avgLine = avg > 0 ? `<line class="avg" x1="${ML}" x2="${W - MR}" y1="${y(avg)}" y2="${y(avg)}"/><text x="${W - MR + 8}" y="${y(avg) - 3}" class="mu">日均</text><text x="${W - MR + 8}" y="${y(avg) + 14}" class="mu">${esc(usd(avg))}</text>` : ''
 
   const every = Math.ceil(n / 6)
   const labels = days
     .map((d, i) => ({ d, i }))
     .filter(({ i }) => i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2))
     .map(({ d, i }) => {
-      const x = ML + (i + 0.5) * slot
+      const x = r1(ML + (i + 0.5) * slot)
       const anchor = x + 24 > W ? `x="${W}" text-anchor="end"` : `x="${x}" text-anchor="middle"`
       return `<text ${anchor} y="${PT + PH + 24}" class="mu">${esc(d.day.slice(5))}</text>`
     })
     .join('')
 
-  const peakLabel = max > 0 ? `<text x="${Math.min(W - MR - 32, Math.max(ML + 32, ML + (peak + 0.5) * slot))}" y="${y(max) - 8}" text-anchor="middle" class="pk">${usd(max)}</text>` : ''
+  const peakLabel = max > 0 ? `<text x="${r1(Math.min(W - MR - 32, Math.max(ML + 32, ML + (peak + 0.5) * slot)))}" y="${y(max) - 8}" text-anchor="middle" class="pk">${esc(usd(max))}</text>` : ''
   const empty = max > 0 ? '' : `<text x="${(ML + W - MR) / 2}" y="${PT + PH / 2}" text-anchor="middle" class="mu">这段时间没有用量</text>`
 
   return {
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${CHART_STYLE}${head}${grid.join('')}${cols.join('')}${peakLabel}${labels}${empty}</svg>`,
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${CHART_STYLE}${head}${tipStyle}${grid.join('')}${avgLine}${cols.join('')}${peakLabel}${labels}${empty}${tips.join('')}</svg>`,
     width: W,
     height: H,
     alt: `${tiles.map(([k, v]) => `${k} ${v}`).join('，')}。每日折算费用，${days[0]?.day ?? ''} 到 ${days.at(-1)?.day ?? ''}，单日最高 ${usd(max)}`,

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Act, Limit, Meter, Tally } from '../types'
+import type { Act, DayTally, Limit, Meter, Tally } from '../types'
 import { bandParts, fmt, limitName, usageChart, usd } from './draw'
 import { SCAN, localDay, summarize, tallyScan, tokensOf } from './ledger'
 
@@ -21,6 +21,9 @@ const range = atom({ plugin: 'clawd-hud', key: 'range' } as const, 'month')
 const PANE = 'usage'
 const USAGE_LINK = 'https://github.com/segfaultlab/clawd-hud'
 
+const STALE_AFTER = 24 * 3600000
+const CELL_PX = 7.2
+
 let scanning = false
 
 async function scan($: EngineInterface) {
@@ -36,6 +39,7 @@ async function scan($: EngineInterface) {
     const rows = tallyScan(out)
     const at = await $.clock.now()
     await update($, ledger, () => ({ at, rows, loading: false }))
+    await $.store.set('ledger', { at, rows })
   } catch {
     await update($, ledger, l => ({ ...l, loading: false, error: '读取本地记录失败，需要系统自带的 sh 和 grep（macOS / Linux）' }))
   } finally {
@@ -45,7 +49,15 @@ async function scan($: EngineInterface) {
 
 async function openUsage($: EngineInterface) {
   await $.ui.open({ id: PANE, title: 'Token 用量' })
-  await scan($)
+  const { at } = await read($, ledger)
+  if (at === null || (await $.clock.now()) - at >= STALE_AFTER) await scan($)
+}
+
+async function loadLedger($: EngineInterface) {
+  const saved = (await $.store.get('ledger')) as { at?: unknown; rows?: unknown } | undefined
+  const at = typeof saved?.at === 'number' ? saved.at : null
+  const rows = at !== null && Array.isArray(saved?.rows) ? (saved.rows as DayTally[]) : null
+  await update($, ledger, l => (l.at === null && rows ? { at, rows, loading: false } : l.loading && !scanning ? { ...l, loading: false } : l))
 }
 
 const usageRow = (name: string, t: Tally, cost: number | null) =>
@@ -220,7 +232,7 @@ export const register: Register = on => {
     const g = gen
     const u = await $.session.usage()
     if (g === gen) await setMeter($, { context: u.context, rateLimits: u.rateLimits, cost: u.cost?.usd ?? null })
-    await update($, ledger, l => (l.loading && !scanning ? { ...l, loading: false } : l))
+    await loadLedger($)
     await reset($)
     return next(e)
   })
@@ -398,7 +410,7 @@ export const register: Register = on => {
     const r = await read($, range)
     const now = await $.clock.now()
     const s = summarize(l.rows, r === 'month' ? localDay(now - 29 * 86400000) : null, localDay(now))
-    const status = l.loading ? '统计中…' : (l.error ?? (l.at === null ? '' : `统计于 ${clockTime(l.at)}`))
+    const status = l.loading ? '统计中…' : (l.error ?? (l.at === null ? '' : `统计于 ${localDay(l.at) === localDay(now) ? '' : `${localDay(l.at).slice(5)} `}${clockTime(l.at)}`))
     const table = [
       '| 模型 | 输入 | 输出 | 缓存写入 | 缓存读取 | 调用 | 折算费用 |',
       '|---|--:|--:|--:|--:|--:|--:|',
@@ -414,6 +426,7 @@ export const register: Register = on => {
       ['缓存命中', `${cacheIn > 0 ? Math.round((s.total.read / cacheIn) * 100) : 0}%`],
     ]
     const chart = usageChart(s.daily, tiles)
+    const chartWidth = Math.min(1200, Math.floor(e.props.bodyColumns * CELL_PX))
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" alignItems="center" gap={1}>
@@ -428,7 +441,7 @@ export const register: Register = on => {
           <Text dimColor>这段时间没有用量记录</Text>
         ) : (
           <Box flexDirection="column" gap={1}>
-            {Svg ? <Svg source={chart.source} alt={chart.alt} /> : <Text bold>{tiles.map(([k, v]) => `${k} ${v}`).join(' · ')}</Text>}
+            {Svg ? <Svg source={chart.source} alt={chart.alt} isInteractive width={chartWidth} height={Math.round((chartWidth * chart.height) / chart.width)} /> : <Text bold>{tiles.map(([k, v]) => `${k} ${v}`).join(' · ')}</Text>}
             <Markdown text={table} />
             {s.unpriced && <Text dimColor>单价表里没有的模型只算 token，不计入费用。</Text>}
           </Box>
